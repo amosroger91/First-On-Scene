@@ -101,8 +101,8 @@ Write-Host "Collecting Security Event Logs (Logons)..."
 # Focusing on Event ID 4624 (Successful Logon) and 4672 (Admin Logon)
 # A full log dump is too large; constraining to recent, high-priority events.
 try {
-    Get-WinEvent -LogName 'Security' -FilterXPath "*[System[(EventID=4624 or EventID=4672)]]" -MaxEvents 500 | 
-        Select-Object TimeCreated, Id, Message | 
+    Get-WinEvent -LogName 'Security' -FilterXPath "*[System[(EventID=4624 or EventID=4672)]]" -MaxEvents 500 |
+        Select-Object TimeCreated, Id, Message |
         ConvertTo-Json -Depth 3 | Out-File (Join-Path $RawDataPath "security_logons.json") -Encoding UTF8
 }
 catch {
@@ -110,6 +110,26 @@ catch {
     #Create empty security_logons.json file
     New-Item -Path (Join-Path $RawDataPath "security_logons.json") -ItemType File -Force | Out-Null
 }
+
+# --- 3. Antivirus Scans ---
+
+# ClamAV Scan
+Write-Host "Starting ClamAV scan..."
+$ClamAVPath = (Get-Command clamscan.exe -ErrorAction SilentlyContinue).Path
+if ($ClamAVPath) {
+    $ClamAVLogPath = Join-Path -Path $RawDataPath -ChildPath "clamav_scan_results.txt"
+    try {
+        & "$ClamAVPath" -r "C:\" | Out-File $ClamAVLogPath -Encoding UTF8
+        Write-Host "ClamAV scan complete. Results saved to $ClamAVLogPath"
+    } catch {
+        Write-Warning "ClamAV scan failed: ${PSItem}"
+    }
+} else {
+    Write-Warning "ClamAV (clamscan.exe) not found. Skipping scan."
+}
+
+# Malwarebytes Scan (Placeholder - requires business version for command-line scanning)
+Write-Host "Malwarebytes scan skipped (requires business version for command-line scanning with output)."
 
 Write-Host "--- Gather_Info.ps1: Collection Complete ---"
 
