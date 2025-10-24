@@ -94,10 +94,32 @@ Your final output **MUST** be a decisive call:
 
 ---
 
+## 🔒 PowerShell Remoting Prerequisites
+
+For remote execution, PowerShell Remoting must be enabled on the target machine(s). To enable it, run the following command in an **Administrator PowerShell** session on the target machine:
+
+```powershell
+Enable-PSRemoting -Force
+```
+
+Ensure appropriate firewall rules are in place to allow WinRM (port 5985 for HTTP, 5986 for HTTPS) traffic.
+
+---
+
 ## 🚀 Quick Run
 
 To quickly execute the Triage Agent, open PowerShell as Administrator and run the following command:
 
+### Local Execution (Default)
+
 ```powershell
 $d=(Join-Path $env:TEMP "FOS_Run"); New-Item -ItemType Directory -Path $d -Force | Out-Null; iwr "https://github.com/amosroger91/First-On-Scene/archive/refs/heads/main.zip" -OutFile "$d\m.zip" -UseBasicParsing; Expand-Archive -Path "$d\m.zip" -DestinationPath $d -Force; & "$d\First-On-Scene-main\scripts\Gather_Info.ps1"
+```
+
+### Remote Execution
+
+To run against a remote computer, specify the `-ComputerName` parameter. If credentials are required, you will be prompted:
+
+```powershell
+$d=(Join-Path $env:TEMP "FOS_Run"); New-Item -ItemType Directory -Path $d -Force | Out-Null; iwr "https://github.com/amosroger91/First-On-Scene/archive/refs/heads/main.zip" -OutFile "$d\m.zip" -UseBasicParsing; Expand-Archive -Path "$d\m.zip" -DestinationPath $d -Force; & "$d\First-On-Scene-main\scripts\Gather_Info.ps1" -ComputerName "RemotePC" -Credential (Get-Credential)
 ```
