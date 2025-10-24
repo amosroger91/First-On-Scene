@@ -15,15 +15,15 @@
 **Run one command. Get instant AI-powered triage.**
 
 ### Prerequisites
-1. **Administrator PowerShell** - Required for forensic data collection
-2. **OpenRouter API Key** (FREE) - Get yours at [openrouter.ai/keys](https://openrouter.ai/keys)
-   - No credit card required
-   - Takes 2 minutes to set up
-   - You'll be prompted on first run
+1. **Administrator PowerShell** - Required for forensic data collection.
+2. **OpenRouter API Key** (FREE) - Get yours at [openrouter.ai/keys](https://openrouter.ai/keys).
+   - No credit card required.
+   - Takes 2 minutes to set up.
+   - You'll be prompted on first run.
 
-### Local Execution
+### Local Execution (Windows Only)
 
-**One-liner (download and run):**
+**One-liner (download and run in PowerShell):**
 ```powershell
 $d=(Join-Path $env:TEMP "FOS_Run"); New-Item -ItemType Directory -Path $d -Force | Out-Null; iwr "https://github.com/amosroger91/First-On-Scene/archive/refs/heads/main.zip" -OutFile "$d\m.zip" -UseBasicParsing; Expand-Archive -Path "$d\m.zip" -DestinationPath $d -Force; & "$d\First-On-Scene-main\scripts\Gather_Info.ps1"
 ```
@@ -34,11 +34,12 @@ $d=(Join-Path $env:TEMP "FOS_Run"); New-Item -ItemType Directory -Path $d -Force
 ```
 
 **What happens automatically:**
-1. ✅ Collects forensic artifacts (processes, registry, network, event logs)
-2. ✅ Parses and analyzes the data
-3. ✅ Launches AI triage using Qwen3 Coder 480B (via OpenRouter)
-4. ✅ Generates detailed findings report
-5. ✅ Makes final call: **Problem Detected** or **All Clear**
+1. ✅ Collects forensic artifacts (processes, registry, network, event logs).
+2. ✅ Parses and analyzes the data.
+3. ✅ Launches AI triage using a powerful LLM (via OpenRouter).
+4. ✅ Generates a detailed findings report.
+5. ✅ Makes a final binary decision: **Problem Detected** or **All Clear**.
+6. ✅ **Executes a corresponding custom script (`Problem_Detected.ps1` or `All_Clear.ps1`) to trigger external actions.**
 
 ### Remote Execution
 
@@ -55,41 +56,52 @@ Enable-PSRemoting -Force
 
 ---
 
-## 🤖 Why OpenRouter? Free Access to Cutting-Edge AI
+## 🤖 LLM-Triggered Custom Actions & Automation
 
-**First-On-Scene uses OpenRouter with the Qwen3 Coder 480B A35B model** to provide **completely free** AI-powered incident triage.
+**First-On-Scene** doesn't just stop at analysis. It makes a binary decision (problem vs. no problem) and executes one of two corresponding PowerShell scripts to trigger your custom workflows.
 
-### The Engineering Decision: Cost vs. Performance
+This allows you to automate critical next steps, such as:
+- Isolating a machine from the network.
+- Creating a ticket in your PSA/ticketing system.
+- Sending an alert to a Slack or Teams channel.
+- Triggering a workflow in an automation platform like n8n or Zapier.
 
-We understand that requiring an OpenRouter account is an extra step. However, this is the **best engineering decision** for keeping this tool truly free:
+### How It Works
 
-| Provider | Model Quality | Cost | Verdict |
-| :--- | :--- | :--- | :--- |
-| **OpenRouter (Our Choice)** | ✅ Cutting-edge (Qwen3 Coder 480B) | ✅ **100% FREE** | ✅ **Best Option** |
-| Google Gemini | ✅ Good | ❌ **Paid API** (after trial) | ❌ Not viable |
-| OpenAI GPT | ✅ Excellent | ❌ **Expensive** | ❌ Not viable |
-| Claude API | ✅ Excellent | ❌ **Paid** | ❌ Not viable |
+The LLM's final decision triggers one of two scripts:
 
-### What is OpenRouter?
+1.  **`scripts/Problem_Detected.ps1`**: Executed when a credible threat is found.
+2.  **`scripts/All_Clear.ps1`**: Executed when the alert is a false positive or a contained, low-impact event.
 
-[OpenRouter](https://openrouter.ai) is an API gateway providing **unified access to dozens of AI models**. Their free tier includes:
-- **Qwen3 Coder 480B A35B** (what we use) - Massive model specialized for code and technical analysis
-- Qwen 2.5 72B Instruct - Larger general-purpose model
-- Qwen 2.5 Coder 32B Instruct - Alternative coder model
+### Customization: Integrating Your Systems
 
-### Setup (One-Time, 2 Minutes)
+We provide simple, ready-to-edit template scripts. **You are expected to replace the contents of these files** to integrate with your own systems.
 
-1. **Create free account**: Visit [openrouter.ai/keys](https://openrouter.ai/keys)
-2. **Generate API key**: Click "Create Key" (no credit card)
-3. **Run First-On-Scene**: You'll be prompted for the key on first run
-4. **Done**: Key is securely stored in Windows Credential Manager for future runs
+**Example:** Need to integrate with an n8n workflow? Just drop your custom cURL command or script logic into `Problem_Detected.ps1`.
 
-**Yes, it's an extra step.** But it means:
-- ✅ State-of-the-art AI analysis for $0
-- ✅ No monthly subscriptions or usage limits (within free tier)
-- ✅ A tool that works long-term without asking for payment
+```powershell
+# Example: Triggering a webhook in Problem_Detected.ps1
+param(
+    [Parameter(Mandatory=$true)]
+    [string]$REASON_CODE
+)
 
-We chose this path to ensure **First-On-Scene remains truly free and accessible** to MSPs, IT professionals, and security teams of all sizes.
+# Your custom logic here
+$webhookUrl = "https://your-n8n-instance.com/webhook/123"
+$body = @{
+    "incident" = "First-On-Scene Detection"
+    "reason" = $REASON_CODE
+    "hostname" = $env:COMPUTERNAME
+} | ConvertTo-Json
+
+Invoke-RestMethod -Uri $webhookUrl -Method Post -Body $body -ContentType "application/json"
+```
+
+### Security Note
+
+These scripts run with the user's local permissions. Be mindful of the commands you add, especially when running with administrative privileges.
+
+**Platform Support:** Currently, these scripts are for **Windows (PowerShell) only**. We are considering expanding to support Linux (Bash) in the future.
 
 ---
 
@@ -99,12 +111,12 @@ A Responding Officer arriving at a crime scene must secure the area and, without
 
 | Responding Officer Duty | Triage Agent Duty |
 | :--- | :--- |
-| **Determine if a "crime" occurred** | **Determine if a malicious event definitively occurred** by separating threats from false positives |
-| **Determine if "crime" is ongoing** | **Determine if attack is ongoing/uncontained**, checking active processes, network connections, persistence |
-| **Document without tampering** | **Document every action** to preserve integrity. All commands logged to `Steps_Taken.txt` |
-| **Interview witnesses** | **Gather info from client** about what they observed or actions taken |
-| **Check cameras and logs** | **Execute data collection and parsing** to systematically review logs and forensic data |
-| **Determine escalation** | **Make final decisive call** based on classification (Event, Incident, or Breach) |
+| **Determine if a "crime" occurred** | **Determine if a malicious event definitively occurred** by separating threats from false positives. |
+| **Determine if "crime" is ongoing** | **Determine if attack is ongoing/uncontained**, checking active processes, network connections, and persistence. |
+| **Document without tampering** | **Document every action** to preserve integrity. All commands are logged to `Steps_Taken.txt`. |
+| **Interview witnesses** | **Gather info from the client** about what they observed or actions taken. |
+| **Check cameras and logs** | **Execute data collection and parsing** to systematically review logs and forensic data. |
+| **Determine escalation** | **Make a final decisive call** based on the classification (Event, Incident, or Breach). |
 
 ---
 
@@ -118,19 +130,19 @@ The AI analyzes four key categories:
 
 | Category | What It Checks | AI Task |
 | :--- | :--- | :--- |
-| **Persistence** | Registry Run keys | Identify non-standard startup entries |
-| **Execution** | Running processes | Flag processes from user profiles/temp dirs |
-| **Network** | Active connections | Find unusual external connections |
-| **Credential Access** | Security event logs | Detect suspicious logon patterns (Event IDs 4624/4672) |
+| **Persistence** | Registry Run keys | Identify non-standard startup entries. |
+| **Execution** | Running processes | Flag processes from user profiles/temp dirs. |
+| **Network** | Active connections | Find unusual external connections. |
+| **Credential Access** | Security event logs | Detect suspicious logon patterns (Event IDs 4624/4672). |
 
 ### Forensic Artifacts Collected
 
 **Currently Implemented:**
-- ✅ **Running Processes** - All active processes with paths and command lines
-- ✅ **Network Connections** - TCP connections with owning processes
-- ✅ **Registry Run Keys** - Persistence mechanisms (HKCU/HKLM)
-- ✅ **Security Event Logs** - Logon events (4624/4672)
-- ✅ **Antivirus Scans** - ClamAV and Windows Defender results
+- ✅ **Running Processes** - All active processes with paths and command lines.
+- ✅ **Network Connections** - TCP connections with owning processes.
+- ✅ **Registry Run Keys** - Persistence mechanisms (HKCU/HKLM).
+- ✅ **Security Event Logs** - Logon events (4624/4672).
+- ✅ **Antivirus Scans** - ClamAV and Windows Defender results.
 
 **Planned for Future:**
 - Full memory (RAM) image
@@ -148,21 +160,21 @@ The AI analyzes four key categories:
 
 The AI must make a decisive call:
 
-- **`scripts/Problem_Detected.ps1 [REASON_CODE]`** - Called if classification is a **Breach** or uncontained **Incident**
-  - Argument must be capitalized, concise (e.g., "MALWARE_DETECTED")
-  - Displays critical alert and logs to `results/Steps_Taken.txt`
+- **`scripts/Problem_Detected.ps1 [REASON_CODE]`** - Called if classification is a **Breach** or uncontained **Incident**.
+  - Argument must be capitalized, concise (e.g., "MALWARE_DETECTED").
+  - Displays a critical alert and logs to `results/Steps_Taken.txt`.
 
-- **`scripts/All_Clear.ps1`** - Called if classification is a contained **Event** or False Positive
-  - Logs clearance action
+- **`scripts/All_Clear.ps1`** - Called if classification is a contained **Event** or False Positive.
+  - Logs the clearance action.
 
 ### Output Files
 
 All analysis results are saved to the `results/` directory:
 
-- **`findings.txt`** - MANDATORY: Structured Markdown report explaining analysis and findings
-- **`Steps_Taken.txt`** - MANDATORY: Append-only audit log of all actions
-- **`Info_Results.txt`** - Structured JSON with parsed triage indicators
-- Raw forensic data (JSON files)
+- **`findings.txt`** - MANDATORY: Structured Markdown report explaining analysis and findings.
+- **`Steps_Taken.txt`** - MANDATORY: Append-only audit log of all actions.
+- **`Info_Results.txt`** - Structured JSON with parsed triage indicators.
+- Raw forensic data (JSON files).
 
 ---
 
@@ -170,19 +182,19 @@ All analysis results are saved to the `results/` directory:
 
 When you run `.\scripts\Gather_Info.ps1`, here's what happens:
 
-1. **Data Collection** - `Gather_Info.ps1` collects forensic artifacts
-2. **Parsing** - `Parse_Results.ps1` runs automatically, structures data into `Info_Results.txt`
-3. **AI Analysis** - Qwen CLI launches with OpenRouter, analyzes findings
-4. **Report Generation** - AI writes detailed analysis to `findings.txt`
-5. **Final Decision** - AI executes either `Problem_Detected.ps1` or `All_Clear.ps1`
+1. **Data Collection** - `Gather_Info.ps1` collects forensic artifacts.
+2. **Parsing** - `Parse_Results.ps1` runs automatically, structuring data into `Info_Results.txt`.
+3. **AI Analysis** - The LLM analyzes the findings.
+4. **Report Generation** - The AI writes a detailed analysis to `findings.txt`.
+5. **Final Decision & Action** - The AI executes either `Problem_Detected.ps1` or `All_Clear.ps1`.
 
-**Everything is logged to `results/Steps_Taken.txt` for audit trail.**
+**Everything is logged to `results/Steps_Taken.txt` for a complete audit trail.**
 
 ---
 
 ## 🔒 PowerShell Remoting Prerequisites
 
-For remote execution, PowerShell Remoting must be enabled on target machine(s).
+For remote execution, PowerShell Remoting must be enabled on the target machine(s).
 
 **On the target machine** (run as Administrator):
 ```powershell
@@ -190,7 +202,7 @@ Enable-PSRemoting -Force
 ```
 
 **Firewall requirements:**
-- Allow WinRM traffic (port 5985 for HTTP, 5986 for HTTPS)
+- Allow WinRM traffic (port 5985 for HTTP, 5986 for HTTPS).
 
 ---
 
@@ -198,13 +210,13 @@ Enable-PSRemoting -Force
 
 The AI uses these definitions to classify findings:
 
-- **Breach of Confidentiality** - Unauthorized access/disclosure of confidential information
-- **Malware** - Intentionally harmful software inserted in system
-- **Ransomware** - Malicious attack encrypting organization data, demanding payment
-- **Unauthorized Access** - Logical/physical access without permission
-- **Phishing** - Fraudulent attempt to acquire sensitive data
-- **Spyware** - Software secretly gathering information
-- **Virus** - Self-replicating program infecting system
+- **Breach of Confidentiality** - Unauthorized access/disclosure of confidential information.
+- **Malware** - Intentionally harmful software inserted in a system.
+- **Ransomware** - Malicious attack encrypting organization data, demanding payment.
+- **Unauthorized Access** - Logical/physical access without permission.
+- **Phishing** - Fraudulent attempt to acquire sensitive data.
+- **Spyware** - Software secretly gathering information.
+- **Virus** - Self-replicating program infecting a system.
 
 (See `system_prompt.txt` for complete classification definitions)
 
@@ -214,15 +226,15 @@ The AI uses these definitions to classify findings:
 
 First-On-Scene is designed for MSPs and incident responders. Contributions are welcome:
 
-- **Forensic Artifacts**: Add new data sources to `Gather_Info.ps1`
-- **Triage Logic**: Improve scoring in `Parse_Results.ps1`
-- **Documentation**: Help improve setup guides and usage docs
+- **Forensic Artifacts**: Add new data sources to `Gather_Info.ps1`.
+- **Triage Logic**: Improve scoring in `Parse_Results.ps1`.
+- **Documentation**: Help improve setup guides and usage docs.
 
 ---
 
 ## 📝 License
 
-This project is open source. See LICENSE file for details.
+This project is open source. See the LICENSE file for details.
 
 ---
 
