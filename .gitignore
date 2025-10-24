@@ -1,7 +1,7 @@
 results/
 *.txt
 !README.md
-!CLAUDE.md
+!DEVELOPMENT.md
 !system_prompt.txt
 
 # Claude Code specific
