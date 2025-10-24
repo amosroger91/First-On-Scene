@@ -116,4 +116,4 @@ Write-Host "--- Gather_Info.ps1: Collection Complete ---"
 # Launch Gemini CLI with system prompt
 $SystemPromptPath = Join-Path -Path (Split-Path -Path $PSScriptRoot -Parent) -ChildPath "system_prompt.txt"
 Write-Host "Launching Gemini CLI with system prompt: $SystemPromptPath"
-Start-Process -FilePath "gemini" -ArgumentList "-p", "$SystemPromptPath" -NoNewWindow -Wait
+Start-Process -FilePath "node" -ArgumentList "$(Get-Command gemini).Source", "-p", "$SystemPromptPath" -NoNewWindow -Wait
