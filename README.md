@@ -1,8 +1,7 @@
-<div align="center" style="margin-bottom:-200px">
+<div align="center">
   <img src="https://github.com/amosroger91/First-On-Scene/blob/main/logo.png" alt="First-On-Scene Logo" width="300"/>
+  <h1 style="margin-top: 0px;">Incident Response Triage Agent Handbook</h1>
 </div>
-
-# Incident Response Triage Agent Handbook
 
 ## 🚨 The Triage Agent's Mission: First Responder
 
