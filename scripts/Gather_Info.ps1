@@ -58,7 +58,7 @@ if (Test-WingetInstallation) {
     Write-Warning "Skipping software installation as Winget is not available."
 }
 
-$RawDataPath = Join-Path -Path $PSScriptRoot -ChildPath "results"
+$RawDataPath = Join-Path -Path (Split-Path -Path $PSScriptRoot -Parent) -ChildPath "results"
 
 # --- 1. Setup ---
 Write-Host "--- Gather_Info.ps1: Starting constrained data collection ---"
