@@ -106,7 +106,7 @@ try {
         ConvertTo-Json -Depth 3 | Out-File (Join-Path $RawDataPath "security_logons.json") -Encoding UTF8
 }
 catch {
-    Write-Warning "Could not collect security event logs. Error: $_"
+    Write-Warning "Could not collect security event logs. Error: ${PSItem}"
     #Create empty security_logons.json file
     New-Item -Path (Join-Path $RawDataPath "security_logons.json") -ItemType File -Force | Out-Null
 }
