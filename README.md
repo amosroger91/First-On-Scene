@@ -22,45 +22,7 @@
    - You'll be prompted on first run.
 3. **Winget (Windows Package Manager)** - Recommended for automatic installation of Git, Node.js, and ClamAV. If not installed, these dependencies may need to be installed manually.
 
-### Local Execution (Windows Only)
 
-**One-liner (download and run in PowerShell):**
-```powershell
-$d=(Join-Path $env:TEMP "FOS_Run"); New-Item -ItemType Directory -Path $d -Force | Out-Null; iwr "https://github.com/amosroger91/First-On-Scene/archive/refs/heads/main.zip" -OutFile "$d\m.zip" -UseBasicParsing; Expand-Archive -Path "$d\m.zip" -DestinationPath $d -Force; & "$d\First-On-Scene-main\scripts\Gather_Info.ps1"
-```
-
-**From cloned repository:**
-```powershell
-.\scripts\Gather_Info.ps1
-```
-
-**What happens automatically:**
-1. ✅ **Pre-Scan Remediation**: Downloads and executes `rkill.exe` to terminate known malware processes and services, ensuring a cleaner forensic collection.
-2. ✅ **Software Dependency Check**: Uses Winget to check for and install Git, Node.js (for AI execution), and ClamAV (for antivirus scanning).
-3. ✅ **Collects Forensic Artifacts**: Gathers volatile and persistent data (processes, network connections, registry run keys, scheduled tasks, Windows services, WMI persistence, event logs, browser history, MACE timestamps).
-4. ✅ **Parses and Analyzes Data**: Deterministically processes raw data to identify suspicious activities across multiple categories.
-5. ✅ **Launches AI Triage**: Uses a powerful LLM (via OpenRouter) to analyze findings and generate a detailed report.
-6. ✅ **LLM-Based Error Diagnostics**: If script errors occur, the LLM can be invoked to provide real-time diagnosis and potential fixes.
-7. ✅ **Generates Detailed Reports**: Creates `findings.txt` (AI analysis), `Incident_Report_*.html` (professional HTML report), and attempts to generate `Incident_Report_*.docx` (professional DOCX report).
-8. ✅ **Makes Final Binary Decision**: Determines if a problem is detected or if it's an all-clear scenario.
-9. ✅ **Executes Custom Action Script**: Triggers either `Problem_Detected.ps1` or `All_Clear.ps1` for automated responses.
-
-### Remote Execution
-
-Analyze a remote machine (requires WinRM enabled):
-
-```powershell
-.\scripts\Gather_Info.ps1 -ComputerName "RemotePC" -Credential (Get-Credential)
-```
-
-**Enable WinRM on target machine:**
-```powershell
-Enable-PSRemoting -Force
-```
-
-**WinRM Corruption Detection and Fix**: The toolkit includes a mechanism to detect and attempt to automatically fix common WinRM configuration issues on remote machines, enhancing reliability for remote collections.
-
----
 
 ## 🤖 LLM-Triggered Custom Actions & Automation
 
