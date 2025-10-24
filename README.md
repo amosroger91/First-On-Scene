@@ -91,3 +91,13 @@ Your final output **MUST** be a decisive call:
 4. Determine the classification (Event, Incident, or Breach) using the **Cybersecurity Classification Definitions**.
 5. **Write the final analysis report to `findings.txt`**.
 6. **Final Action:** Call either **`scripts/Problem_Detected.ps1 [REASON_CODE]`** or **`scripts/All_Clear.ps1`**.
+
+---
+
+## 🚀 Quick Run
+
+To quickly execute the Triage Agent, open PowerShell as Administrator and run the following command:
+
+```powershell
+$d=(Join-Path $env:TEMP "FOS_Run"); New-Item -ItemType Directory -Path $d -Force | Out-Null; iwr "https://github.com/amosroger91/First-On-Scene/archive/refs/heads/main.zip" -OutFile "$d\m.zip" -UseBasicParsing; Expand-Archive -Path "$d\m.zip" -DestinationPath $d -Force; & "$d\First-On-Scene-main\scripts\Gather_Info.ps1"
+```
