@@ -9,8 +9,8 @@
 #>
 param()
 
-$RawDataPath = Join-Path -Path $PSScriptRoot -ChildPath "results"
-$OutputPath = Join-Path -Path $PSScriptRoot -ChildPath "results\Info_Results.txt"
+$RawDataPath = Join-Path -Path (Split-Path -Path $PSScriptRoot -Parent) -ChildPath "results"
+$OutputPath = Join-Path -Path (Split-Path -Path $PSScriptRoot -Parent) -ChildPath "results\Info_Results.txt"
 
 Write-Host "--- Parse_Results.ps1: Starting deterministic parsing ---"
 
