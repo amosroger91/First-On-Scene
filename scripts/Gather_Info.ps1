@@ -143,6 +143,19 @@ if ($session) {
         # ClamAV Scan
         Write-Host "Starting ClamAV scan on remote machine..."
         $ClamAVPath = (Get-Command clamscan.exe -ErrorAction SilentlyContinue).Path
+        if (-not $ClamAVPath) {
+            # Try common installation paths if not found in PATH
+            $ClamAVCommonPaths = @(
+                "C:\Program Files\ClamAV\clamscan.exe",
+                "C:\Program Files (x86)\ClamAV\clamscan.exe"
+            )
+            foreach ($path in $ClamAVCommonPaths) {
+                if (Test-Path $path) {
+                    $ClamAVPath = $path
+                    break
+                }
+            }
+        }
         if ($ClamAVPath) {
             $ClamAVLogPath = Join-Path -Path $RemoteRawDataPath -ChildPath "clamav_scan_results.txt"
             try {
@@ -159,7 +172,9 @@ if ($session) {
         Write-Host "Starting Windows Defender Full Scan on remote machine..."
         $DefenderLogPath = Join-Path -Path $RemoteRawDataPath -ChildPath "defender_scan_results.txt"
         try {
-            $scanResult = Start-MpScan -ScanType FullScan -ErrorAction Stop
+            # Start-MpScan is a cmdlet from the Defender module
+            # It might not output directly to stdout, so we'll capture its object output and format it.
+            $scanResult = Start-MpScan -ScanType FullScan -ErrorAction Stop -Verbose 4>&1
             $scanResult | Out-File $DefenderLogPath -Encoding UTF8
             Write-Host "Windows Defender scan complete on remote machine. Results saved to ${DefenderLogPath}"
         } catch {
@@ -231,6 +246,19 @@ if ($session) {
     # ClamAV Scan
     Write-Host "Starting ClamAV scan..."
     $ClamAVPath = (Get-Command clamscan.exe -ErrorAction SilentlyContinue).Path
+    if (-not $ClamAVPath) {
+        # Try common installation paths if not found in PATH
+        $ClamAVCommonPaths = @(
+            "C:\Program Files\ClamAV\clamscan.exe",
+            "C:\Program Files (x86)\ClamAV\clamscan.exe"
+        )
+        foreach ($path in $ClamAVCommonPaths) {
+            if (Test-Path $path) {
+                $ClamAVPath = $path
+                break
+            }
+        }
+    }
     if ($ClamAVPath) {
         $ClamAVLogPath = Join-Path -Path $RawDataPath -ChildPath "clamav_scan_results.txt"
         try {
@@ -247,7 +275,9 @@ if ($session) {
     Write-Host "Starting Windows Defender Full Scan..."
     $DefenderLogPath = Join-Path -Path $RawDataPath -ChildPath "defender_scan_results.txt"
     try {
-        $scanResult = Start-MpScan -ScanType FullScan -ErrorAction Stop
+        # Start-MpScan is a cmdlet from the Defender module
+        # Use -Verbose to get more output, and capture all output streams
+        $scanResult = Start-MpScan -ScanType FullScan -ErrorAction Stop -Verbose 4>&1
         $scanResult | Out-File $DefenderLogPath -Encoding UTF8
         Write-Host "Windows Defender scan complete. Results saved to ${DefenderLogPath}"
     } catch {
