@@ -2,15 +2,15 @@
 .SYNOPSIS
     Parses raw data into the structured Info_Results.txt file for the Triage Agent.
 .DESCRIPTION
-    Reads JSON files from Raw_Data, applies LLM-defined Triage logic/filters (Persistence, 
+    Reads JSON files from results, applies LLM-defined Triage logic/filters (Persistence, 
     Execution, Network, Credential Access), and writes the final JSON structure.
 .OUTPUTS
-    Info_Results.txt (Structured JSON).
+    results/Info_Results.txt (Structured JSON).
 #>
 param()
 
-$RawDataPath = Join-Path -Path $PSScriptRoot -ChildPath "Raw_Data"
-$OutputPath = Join-Path -Path $PSScriptRoot -ChildPath "Info_Results.txt"
+$RawDataPath = Join-Path -Path $PSScriptRoot -ChildPath "results"
+$OutputPath = Join-Path -Path $PSScriptRoot -ChildPath "results\Info_Results.txt"
 
 Write-Host "--- Parse_Results.ps1: Starting deterministic parsing ---"
 
@@ -86,4 +86,4 @@ $InfoResults = @{
 
 $InfoResults | ConvertTo-Json -Depth 5 | Out-File $OutputPath -Encoding UTF8
 
-Write-Host "--- Parse_Results.ps1: Structured output written to Info_Results.txt ---"
+Write-Host "--- Parse_Results.ps1: Structured output written to results/Info_Results.txt ---"

@@ -3,17 +3,22 @@
     Gathers essential volatile and persistent system artifacts for Triage Agent analysis.
 .DESCRIPTION
     Collects live processes, network state, basic persistence mechanisms, and event logs 
-    using only native PowerShell and stores raw output in the 'Raw_Data' directory.
+    using only native PowerShell and stores raw output in the 'results' directory.
 #>
 param()
 
-$RawDataPath = Join-Path -Path $PSScriptRoot -ChildPath "Raw_Data"
+# Check for administrator privileges
+if (-not ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
+    Write-Warning "This script requires administrator privileges to collect all artifacts. Please run as an administrator."
+}
+
+$RawDataPath = Join-Path -Path $PSScriptRoot -ChildPath "results"
 
 # --- 1. Setup ---
 Write-Host "--- Gather_Info.ps1: Starting constrained data collection ---"
 if (-not (Test-Path $RawDataPath)) {
     New-Item -Path $RawDataPath -ItemType Directory | Out-Null
-    Write-Host "Created raw data directory: $RawDataPath"
+    Write-Host "Created results directory: $RawDataPath"
 }
 
 # --- 2. Collection Commands (Volatile & Persistent Artifacts) ---
@@ -49,8 +54,15 @@ Get-NetTCPConnection |
 Write-Host "Collecting Security Event Logs (Logons)..."
 # Focusing on Event ID 4624 (Successful Logon) and 4672 (Admin Logon)
 # A full log dump is too large; constraining to recent, high-priority events.
-Get-WinEvent -LogName 'Security' -FilterXPath "*[System[(EventID=4624 or EventID=4672)]]" -MaxEvents 500 | 
-    Select-Object TimeCreated, Id, Message | 
-    ConvertTo-Json -Depth 3 | Out-File (Join-Path $RawDataPath "security_logons.json") -Encoding UTF8
+try {
+    Get-WinEvent -LogName 'Security' -FilterXPath "*[System[(EventID=4624 or EventID=4672)]]" -MaxEvents 500 | 
+        Select-Object TimeCreated, Id, Message | 
+        ConvertTo-Json -Depth 3 | Out-File (Join-Path $RawDataPath "security_logons.json") -Encoding UTF8
+}
+catch {
+    Write-Warning "Could not collect security event logs. Error: $_"
+    #Create empty security_logons.json file
+    New-Item -Path (Join-Path $RawDataPath "security_logons.json") -ItemType File -Force | Out-Null
+}
 
 Write-Host "--- Gather_Info.ps1: Collection Complete ---"
