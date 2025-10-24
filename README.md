@@ -216,7 +216,7 @@ When you run `.\scripts\Gather_Info.ps1`, here's what happens:
 We understand that requiring an OpenRouter account is an extra step. However, this is the **best engineering decision** for keeping this tool truly free:
 
 | Provider | Model Quality | Cost | Verdict |
-| :--- | :--- | :--- |
+| :--- | :--- | :--- | :--- |
 | **OpenRouter (Our Choice)** | ✅ Cutting-edge (various models available) | ✅ **100% FREE** | ✅ **Best Option** |
 | Google Gemini | ✅ Good | ❌ **Paid API** (after trial) | ❌ Not viable |
 | OpenAI GPT | ✅ Excellent | ❌ **Expensive** | ❌ Not viable |
