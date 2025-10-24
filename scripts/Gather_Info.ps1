@@ -44,7 +44,7 @@ function Install-Software {
             }
         }
     } catch {
-        Write-Warning "Error checking/installing $FriendlyName: ${PSItem}"
+        Write-Warning "Error checking/installing ${FriendlyName}: ${PSItem}"
     }
 }
 
