@@ -172,11 +172,19 @@ if ($session) {
         Write-Host "Starting Windows Defender Full Scan on remote machine..."
         $DefenderLogPath = Join-Path -Path $RemoteRawDataPath -ChildPath "defender_scan_results.txt"
         try {
-            # Start-MpScan is a cmdlet from the Defender module
-            # It might not output directly to stdout, so we'll capture its object output and format it.
-            $scanResult = Start-MpScan -ScanType FullScan -ErrorAction Stop -Verbose 4>&1
-            $scanResult | Out-File $DefenderLogPath -Encoding UTF8
-            Write-Host "Windows Defender scan complete on remote machine. Results saved to ${DefenderLogPath}"
+            # Explicitly import the Defender module
+            Import-Module -Name Defender -ErrorAction SilentlyContinue
+
+            if (Get-Command Start-MpScan -ErrorAction SilentlyContinue) {
+                # Start-MpScan is a cmdlet from the Defender module
+                # Use -Verbose to get more output, and capture all output streams (4>&1)
+                $scanResult = Start-MpScan -ScanType FullScan -ErrorAction Stop -Verbose 4>&1
+                $scanResult | Out-File $DefenderLogPath -Encoding UTF8
+                Write-Host "Windows Defender scan complete on remote machine. Results saved to ${DefenderLogPath}"
+            } else {
+                Write-Warning "Start-MpScan cmdlet not found on remote machine. Ensure Windows Defender is enabled and the Defender module is available. Skipping scan."
+                "Start-MpScan cmdlet not found on remote machine. Skipping scan." | Out-File $DefenderLogPath -Encoding UTF8
+            }
         } catch {
             Write-Warning "Windows Defender scan failed on remote machine: ${PSItem}"
             "Windows Defender scan failed on remote machine: ${PSItem}" | Out-File $DefenderLogPath -Encoding UTF8
@@ -275,11 +283,19 @@ if ($session) {
     Write-Host "Starting Windows Defender Full Scan..."
     $DefenderLogPath = Join-Path -Path $RawDataPath -ChildPath "defender_scan_results.txt"
     try {
-        # Start-MpScan is a cmdlet from the Defender module
-        # Use -Verbose to get more output, and capture all output streams
-        $scanResult = Start-MpScan -ScanType FullScan -ErrorAction Stop -Verbose 4>&1
-        $scanResult | Out-File $DefenderLogPath -Encoding UTF8
-        Write-Host "Windows Defender scan complete. Results saved to ${DefenderLogPath}"
+        # Explicitly import the Defender module
+        Import-Module -Name Defender -ErrorAction SilentlyContinue
+
+        if (Get-Command Start-MpScan -ErrorAction SilentlyContinue) {
+            # Start-MpScan is a cmdlet from the Defender module
+            # Use -Verbose to get more output, and capture all output streams (4>&1)
+            $scanResult = Start-MpScan -ScanType FullScan -ErrorAction Stop -Verbose 4>&1
+            $scanResult | Out-File $DefenderLogPath -Encoding UTF8
+            Write-Host "Windows Defender scan complete. Results saved to ${DefenderLogPath}"
+        } else {
+            Write-Warning "Start-MpScan cmdlet not found. Ensure Windows Defender is enabled and the Defender module is available. Skipping scan."
+            "Start-MpScan cmdlet not found. Skipping scan." | Out-File $DefenderLogPath -Encoding UTF8
+        }
     } catch {
         Write-Warning "Windows Defender scan failed: ${PSItem}"
         "Windows Defender scan failed: ${PSItem}" | Out-File $DefenderLogPath -Encoding UTF8
