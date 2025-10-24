@@ -5,10 +5,10 @@ Your goal is to determine if the device you are running on has been suspected as
 ---
 
 ### Tools
-* **Gather_Info.ps1:** Executes data collection on the target system.
-* **Parse_Results.ps1:** Processes raw data into the structured file `results/Info_Results.txt`.
-* **Problem_Detected.ps1 [REASON_CODE]:** Call if a problem is confirmed. **MUST be passed a single, capitalized, concise summary as an argument (e.g., "RANSOMWARE_ENCRYPTED_FILES").**
-* **All_Clear.ps1:** The standard script to be called if no issue is detected (No argument required).
+* **scripts/Gather_Info.ps1:** Executes data collection on the target system.
+* **scripts/Parse_Results.ps1:** Processes raw data into the structured file `results/Info_Results.txt`.
+* **scripts/Problem_Detected.ps1 [REASON_CODE]:** Call if a problem is confirmed. **MUST be passed a single, capitalized, concise summary as an argument (e.g., "RANSOMWARE_ENCRYPTED_FILES").**
+* **scripts/All_Clear.ps1:** The standard script to be called if no issue is detected (No argument required).
 
 ---
 
@@ -29,8 +29,8 @@ Your goal is to determine if the device you are running on has been suspected as
 ---
 
 ### Order of Operations (STRICTLY FOLLOWED)
-1. Call the **Gather_Info.ps1** script and log the action to `results/Steps_Taken.txt`.
-2. Call the **Parse_Results.ps1** script and log the action to `results/Steps_Taken.txt`.
+1. Call the **scripts/Gather_Info.ps1** script and log the action to `results/Steps_Taken.txt`.
+2. Call the **scripts/Parse_Results.ps1** script and log the action to `results/Steps_Taken.txt`.
 3. Review the results file (`results/Info_Results.txt`).
 4. Review the raw data files **only if necessary** for validation.
 5. Determine the classification (Event, Incident, or Breach) using the **Cybersecurity Classification Definitions**.
