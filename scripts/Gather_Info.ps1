@@ -18,20 +18,128 @@ if (-not ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdenti
     Write-Warning "This script requires administrator privileges to collect all artifacts. Please run as an administrator."
 }
 
+# --- WinRM Corruption Detection and Fix ---
+function Test-AndFixWinRM {
+    param(
+        [Parameter(Mandatory=$true)]
+        [string]$ComputerName,
+
+        [Parameter(Mandatory=$false)]
+        [System.Management.Automation.PSCredential]$Credential
+    )
+
+    Write-Host "Testing WinRM configuration on ${ComputerName}..."
+
+    # First, test if we can actually create a session (more reliable than Test-WSMan)
+    try {
+        Write-Host "Attempting test PSSession..."
+        if ($Credential) {
+            $testSession = New-PSSession -ComputerName $ComputerName -Credential $Credential -ErrorAction Stop
+        } else {
+            $testSession = New-PSSession -ComputerName $ComputerName -ErrorAction Stop
+        }
+
+        # If we got here, WinRM is working
+        Remove-PSSession $testSession -ErrorAction SilentlyContinue
+        Write-Host "WinRM is configured correctly on ${ComputerName}." -ForegroundColor Green
+        return $true
+    }
+    catch {
+        $errorMsg = $_.Exception.Message
+
+        # Check if this is specifically a WinRM corruption error
+        if ($errorMsg -like "*WS-Management configuration is corrupted*" -or
+            $errorMsg -like "*CorruptedWinRMConfig*") {
+
+            Write-Warning "WinRM corruption detected on ${ComputerName}!"
+            Write-Host "Attempting to restore WinRM defaults on ${ComputerName}..."
+
+            # Try to fix WinRM using WMI
+            try {
+                # Method 1: Use WMI to execute the fix remotely
+                Write-Host "Executing WinRM restore via WMI..."
+                $fixCommand = "cmd.exe /c `"winrm invoke Restore http://schemas.microsoft.com/wbem/wsman/1/config @{} && winrm set winrm/config/client @{TrustedHosts=`"*`"}`""
+
+                $result = Invoke-WmiMethod -ComputerName $ComputerName -Class Win32_Process -Name Create -ArgumentList $fixCommand -ErrorAction Stop
+
+                if ($result.ReturnValue -eq 0) {
+                    Write-Host "WinRM restore command sent. Waiting for service to reconfigure..." -ForegroundColor Cyan
+                    Start-Sleep -Seconds 8
+
+                    # Try to re-enable PSRemoting
+                    Write-Host "Re-enabling PSRemoting..."
+                    $enableCommand = "powershell.exe -Command `"Enable-PSRemoting -Force -SkipNetworkProfileCheck`""
+                    $result2 = Invoke-WmiMethod -ComputerName $ComputerName -Class Win32_Process -Name Create -ArgumentList $enableCommand -ErrorAction Stop
+                    Start-Sleep -Seconds 5
+
+                    # Test again with actual session
+                    Write-Host "Testing repaired WinRM configuration..."
+                    if ($Credential) {
+                        $testSession2 = New-PSSession -ComputerName $ComputerName -Credential $Credential -ErrorAction Stop
+                    } else {
+                        $testSession2 = New-PSSession -ComputerName $ComputerName -ErrorAction Stop
+                    }
+
+                    Remove-PSSession $testSession2 -ErrorAction SilentlyContinue
+                    Write-Host "WinRM has been successfully repaired on ${ComputerName}!" -ForegroundColor Green
+                    return $true
+                }
+                else {
+                    Write-Warning "WinRM restore command returned error code: $($result.ReturnValue)"
+                    return $false
+                }
+            }
+            catch {
+                Write-Warning "Unable to automatically fix WinRM on ${ComputerName}: ${PSItem}"
+                Write-Host ""
+                Write-Host "Manual Fix Required:" -ForegroundColor Yellow
+                Write-Host "  1. Log into ${ComputerName}" -ForegroundColor Yellow
+                Write-Host "  2. Run PowerShell as Administrator" -ForegroundColor Yellow
+                Write-Host "  3. Execute: winrm invoke Restore http://schemas.microsoft.com/wbem/wsman/1/config '@{}'" -ForegroundColor Yellow
+                Write-Host "  4. Execute: Enable-PSRemoting -Force" -ForegroundColor Yellow
+                Write-Host ""
+                return $false
+            }
+        }
+        else {
+            # Different error (not WinRM corruption)
+            Write-Warning "PSSession failed but not due to WinRM corruption: $errorMsg"
+            return $false
+        }
+    }
+}
+
 # --- Remote Session Setup ---
 $session = $null
 if ($ComputerName -ne "localhost") {
     Write-Host "Attempting to establish remote session to ${ComputerName}..."
-    try {
-        if ($Credential) {
-            $session = New-PSSession -ComputerName $ComputerName -Credential $Credential
-        } else {
-            $session = New-PSSession -ComputerName $ComputerName
+
+    # Test and fix WinRM if needed
+    $winrmReady = if ($Credential) {
+        Test-AndFixWinRM -ComputerName $ComputerName -Credential $Credential
+    } else {
+        Test-AndFixWinRM -ComputerName $ComputerName
+    }
+
+    if (-not $winrmReady) {
+        Write-Warning "Unable to establish remote connection to ${ComputerName}. Falling back to local execution."
+        Write-Host "Note: You are running on localhost but specified -ComputerName ${ComputerName}."
+        Write-Host "If you need to collect from ${ComputerName}, please fix WinRM manually and try again."
+        # Don't exit - fall through to local execution
+    }
+    else {
+        try {
+            if ($Credential) {
+                $session = New-PSSession -ComputerName $ComputerName -Credential $Credential -ErrorAction Stop
+            } else {
+                $session = New-PSSession -ComputerName $ComputerName -ErrorAction Stop
+            }
+            Write-Host "Remote session established successfully."
+        } catch {
+            Write-Warning "Failed to establish remote session despite WinRM being available: ${PSItem}"
+            Write-Host "Falling back to local execution."
+            $session = $null
         }
-        Write-Host "Remote session established successfully."
-    } catch {
-        Write-Error "Failed to establish remote session to ${ComputerName}: ${PSItem}"
-        exit 1
     }
 }
 
@@ -101,6 +209,37 @@ if ($session) {
             Write-Host "Created remote results directory: ${RemoteRawDataPath}"
         }
 
+        # --- 0. Pre-Scan Remediation: rkill.exe ---
+        Write-Host "Pre-Scan Remediation: Downloading and executing rkill.exe on remote machine..."
+        $rkillUrl = "https://download.bleepingcomputer.com/grinler/rkill.exe"
+        $rkillPath = Join-Path -Path $env:TEMP -ChildPath "rkill.exe"
+        $rkillLogPath = Join-Path -Path $RemoteRawDataPath -ChildPath "rkill_execution.log"
+
+        try {
+            # Download rkill.exe
+            Invoke-WebRequest -Uri $rkillUrl -OutFile $rkillPath -UseBasicParsing -ErrorAction Stop
+            Write-Host "rkill.exe downloaded successfully to ${rkillPath}"
+
+            # Execute rkill.exe silently
+            $rkillProcess = Start-Process -FilePath $rkillPath -ArgumentList "-s" -Wait -PassThru -NoNewWindow -RedirectStandardOutput $rkillLogPath
+            Write-Host "rkill.exe executed. Exit code: $($rkillProcess.ExitCode)"
+
+            # Log action to Steps_Taken.txt
+            $stepsLog = Join-Path -Path $RemoteRawDataPath -ChildPath "Steps_Taken.txt"
+            "$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss') :: Pre-Scan Remediation: rkill.exe executed (Exit Code: $($rkillProcess.ExitCode))" |
+                Out-File $stepsLog -Append -Encoding UTF8
+
+            # Clean up rkill executable
+            if (Test-Path $rkillPath) {
+                Remove-Item -Path $rkillPath -Force -ErrorAction SilentlyContinue
+            }
+        }
+        catch {
+            Write-Warning "rkill.exe execution failed on remote machine: ${PSItem}"
+            "$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss') :: Pre-Scan Remediation: rkill.exe failed - ${PSItem}" |
+                Out-File (Join-Path -Path $RemoteRawDataPath -ChildPath "Steps_Taken.txt") -Append -Encoding UTF8
+        }
+
         # II. Persistent System Artifacts: Registry (Persistence & Execution Evidence)
         Write-Host "Collecting Registry Run Keys (Persistence) on remote machine..."
         $RunKeyPaths = @(
@@ -114,6 +253,55 @@ if ($session) {
         }
         $RunKeyData | ConvertTo-Json -Depth 3 | Out-File (Join-Path $RemoteRawDataPath "registry_run_keys.json") -Encoding UTF8
 
+        # II. Persistent System Artifacts: Scheduled Tasks (Persistence Evidence)
+        Write-Host "Collecting Scheduled Tasks (Persistence) on remote machine..."
+        try {
+            Get-ScheduledTask |
+                Select-Object TaskName, TaskPath, State,
+                    @{Name='Actions';Expression={($_.Actions | Where-Object {$_.Execute} | ForEach-Object {$_.Execute}) -join '; '}},
+                    @{Name='Arguments';Expression={($_.Actions | Where-Object {$_.Arguments} | ForEach-Object {$_.Arguments}) -join '; '}},
+                    @{Name='Author';Expression={$_.Author}},
+                    @{Name='Principal';Expression={$_.Principal.UserId}},
+                    @{Name='Enabled';Expression={$_.Settings.Enabled}} |
+                ConvertTo-Json -Depth 3 | Out-File (Join-Path $RemoteRawDataPath "scheduled_tasks.json") -Encoding UTF8
+        }
+        catch {
+            Write-Warning "Could not collect scheduled tasks on remote machine. Error: ${PSItem}"
+            "[]" | Out-File (Join-Path $RemoteRawDataPath "scheduled_tasks.json") -Encoding UTF8
+        }
+
+        # II. Persistent System Artifacts: Windows Services (Persistence Evidence)
+        Write-Host "Collecting Windows Services (Persistence) on remote machine..."
+        try {
+            Get-CimInstance -ClassName Win32_Service |
+                Select-Object Name, DisplayName, State, StartMode, PathName,
+                    StartName, ProcessId, Description,
+                    @{Name='CreationClassName';Expression={$_.CreationClassName}} |
+                ConvertTo-Json -Depth 3 | Out-File (Join-Path $RemoteRawDataPath "services_config.json") -Encoding UTF8
+        }
+        catch {
+            Write-Warning "Could not collect Windows services on remote machine. Error: ${PSItem}"
+            "[]" | Out-File (Join-Path $RemoteRawDataPath "services_config.json") -Encoding UTF8
+        }
+
+        # II. Persistent System Artifacts: WMI Event Subscriptions (Persistence Evidence)
+        Write-Host "Collecting WMI Event Subscriptions (Persistence) on remote machine..."
+        try {
+            $WMIPersistence = @{
+                EventFilters = @(Get-CimInstance -Namespace root\subscription -ClassName __EventFilter |
+                    Select-Object Name, Query, QueryLanguage, EventNamespace)
+                EventConsumers = @(Get-CimInstance -Namespace root\subscription -ClassName __EventConsumer |
+                    Select-Object Name, @{Name='Type';Expression={$_.CimClass.CimClassName}})
+                FilterBindings = @(Get-CimInstance -Namespace root\subscription -ClassName __FilterToConsumerBinding |
+                    Select-Object @{Name='Filter';Expression={$_.Filter.Name}}, @{Name='Consumer';Expression={$_.Consumer.Name}})
+            }
+            $WMIPersistence | ConvertTo-Json -Depth 4 | Out-File (Join-Path $RemoteRawDataPath "wmi_persistence.json") -Encoding UTF8
+        }
+        catch {
+            Write-Warning "Could not collect WMI event subscriptions on remote machine. Error: ${PSItem}"
+            "@{EventFilters=@();EventConsumers=@();FilterBindings=@()}" | ConvertTo-Json | Out-File (Join-Path $RemoteRawDataPath "wmi_persistence.json") -Encoding UTF8
+        }
+
         # I. Volatile Data: Running Processes (Execution Evidence)
         Write-Host "Collecting Processes Snapshot (Execution) on remote machine..."
         Get-CimInstance -ClassName Win32_Process |
@@ -126,17 +314,156 @@ if ($session) {
             Select-Object LocalAddress, LocalPort, RemoteAddress, RemotePort, State, OwningProcess |
             ConvertTo-Json -Depth 3 | Out-File (Join-Path $RemoteRawDataPath "netstat_snapshot.json") -Encoding UTF8
 
-        # III. Credential and User Activity: Security Event Logs (Credential Access Evidence)
-        Write-Host "Collecting Security Event Logs (Logons) on remote machine..."
+        # III. Comprehensive Event Log Collection
+
+        # Security Event Logs (Logons, Process Creation, Services, Users, Object Access)
+        Write-Host "Collecting Security Event Logs on remote machine..."
         try {
-            Get-WinEvent -LogName 'Security' -FilterXPath "*[System[(EventID=4624 or EventID=4672)]]" -MaxEvents 500 |
-                Select-Object TimeCreated, Id, Message |
-                ConvertTo-Json -Depth 3 | Out-File (Join-Path $RemoteRawDataPath "security_logons.json") -Encoding UTF8
+            # Event IDs: 4624 (Logon), 4672 (Admin), 4688 (Process Creation),
+            #            4697 (Service Install), 4720 (User Creation), 4663 (Object Access)
+            Get-WinEvent -LogName 'Security' -FilterXPath "*[System[(EventID=4624 or EventID=4672 or EventID=4688 or EventID=4697 or EventID=4720 or EventID=4663)]]" -MaxEvents 1000 |
+                Select-Object TimeCreated, Id, Message,
+                    @{Name='ProcessName';Expression={$_.Properties[5].Value}},
+                    @{Name='ProcessCommandLine';Expression={$_.Properties[8].Value}} |
+                ConvertTo-Json -Depth 3 | Out-File (Join-Path $RemoteRawDataPath "security_events.json") -Encoding UTF8
         }
         catch {
             Write-Warning "Could not collect security event logs on remote machine. Error: ${PSItem}"
-            New-Item -Path (Join-Path $RemoteRawDataPath "security_logons.json") -ItemType File -Force | Out-Null
+            "[]" | Out-File (Join-Path $RemoteRawDataPath "security_events.json") -Encoding UTF8
         }
+
+        # PowerShell Operational Logs (Script Block Logging)
+        Write-Host "Collecting PowerShell Operational Logs on remote machine..."
+        try {
+            Get-WinEvent -LogName 'Microsoft-Windows-PowerShell/Operational' -MaxEvents 500 |
+                Select-Object TimeCreated, Id, Message, LevelDisplayName |
+                ConvertTo-Json -Depth 3 | Out-File (Join-Path $RemoteRawDataPath "powershell_logs.json") -Encoding UTF8
+        }
+        catch {
+            Write-Warning "Could not collect PowerShell logs on remote machine. Error: ${PSItem}"
+            "[]" | Out-File (Join-Path $RemoteRawDataPath "powershell_logs.json") -Encoding UTF8
+        }
+
+        # IV. Browser History and Downloads (Execution History Evidence)
+        Write-Host "Collecting Browser History and Downloads on remote machine..."
+        $BrowserArtifacts = @()
+
+        # Chrome/Edge Chromium-based browsers
+        $ChromePaths = @(
+            "$env:LOCALAPPDATA\Google\Chrome\User Data\Default\History",
+            "$env:LOCALAPPDATA\Microsoft\Edge\User Data\Default\History"
+        )
+
+        # Firefox
+        $FirefoxProfilePath = "$env:APPDATA\Mozilla\Firefox\Profiles"
+        if (Test-Path $FirefoxProfilePath) {
+            $FirefoxProfiles = Get-ChildItem -Path $FirefoxProfilePath -Directory -ErrorAction SilentlyContinue
+            foreach ($profile in $FirefoxProfiles) {
+                $ChromePaths += Join-Path $profile.FullName "places.sqlite"
+            }
+        }
+
+        foreach ($browserDbPath in $ChromePaths) {
+            if (Test-Path $browserDbPath) {
+                try {
+                    $browserName = if ($browserDbPath -like "*Chrome*") { "Chrome" }
+                                   elseif ($browserDbPath -like "*Edge*") { "Edge" }
+                                   elseif ($browserDbPath -like "*Firefox*") { "Firefox" }
+                                   else { "Unknown" }
+
+                    $destFileName = "${browserName}_History_$(Get-Date -Format 'yyyyMMdd_HHmmss').db"
+                    $destPath = Join-Path $RemoteRawDataPath $destFileName
+
+                    # Copy database file (locked files may fail, but we try)
+                    Copy-Item -Path $browserDbPath -Destination $destPath -Force -ErrorAction Stop
+
+                    $BrowserArtifacts += @{
+                        Browser = $browserName
+                        SourcePath = $browserDbPath
+                        CopiedTo = $destFileName
+                        Timestamp = (Get-Date).ToString("yyyy-MM-dd HH:mm:ss")
+                    }
+
+                    Write-Host "  Copied ${browserName} history database"
+                }
+                catch {
+                    Write-Warning "  Could not copy browser history from ${browserDbPath}: ${PSItem}"
+                }
+            }
+        }
+
+        # Save manifest of collected browser artifacts
+        $BrowserArtifacts | ConvertTo-Json -Depth 3 | Out-File (Join-Path $RemoteRawDataPath "browser_artifacts.json") -Encoding UTF8
+
+        # V. MACE Timestamps for Suspicious Files (File System Artifacts)
+        Write-Host "Collecting MACE timestamps for referenced executables on remote machine..."
+        $FileMetadata = @()
+        $UniqueFilePaths = @{}
+
+        # Extract file paths from Run keys
+        try {
+            $runKeysContent = Get-Content (Join-Path $RemoteRawDataPath "registry_run_keys.json") -Raw | ConvertFrom-Json
+            foreach ($runKey in $runKeysContent) {
+                $runKey.PSObject.Properties | Where-Object { $_.Name -notmatch '^PS' } | ForEach-Object {
+                    if ($_.Value -match '([A-Za-z]:\\[^"]+\.exe)') {
+                        $UniqueFilePaths[$matches[1]] = $true
+                    }
+                }
+            }
+        } catch { }
+
+        # Extract file paths from Scheduled Tasks
+        try {
+            $tasksContent = Get-Content (Join-Path $RemoteRawDataPath "scheduled_tasks.json") -Raw | ConvertFrom-Json
+            foreach ($task in $tasksContent) {
+                if ($task.Actions -and (Test-Path $task.Actions -ErrorAction SilentlyContinue)) {
+                    $UniqueFilePaths[$task.Actions] = $true
+                }
+            }
+        } catch { }
+
+        # Extract file paths from Services
+        try {
+            $servicesContent = Get-Content (Join-Path $RemoteRawDataPath "services_config.json") -Raw | ConvertFrom-Json
+            foreach ($service in $servicesContent) {
+                if ($service.PathName -match '([A-Za-z]:\\[^"]+\.exe)') {
+                    $UniqueFilePaths[$matches[1]] = $true
+                }
+            }
+        } catch { }
+
+        # Extract file paths from Processes
+        try {
+            $processesContent = Get-Content (Join-Path $RemoteRawDataPath "processes_snapshot.json") -Raw | ConvertFrom-Json
+            foreach ($process in $processesContent) {
+                if ($process.ExecutablePath -and (Test-Path $process.ExecutablePath -ErrorAction SilentlyContinue)) {
+                    $UniqueFilePaths[$process.ExecutablePath] = $true
+                }
+            }
+        } catch { }
+
+        # Collect MACE timestamps for all unique file paths
+        foreach ($filePath in $UniqueFilePaths.Keys) {
+            try {
+                if (Test-Path $filePath) {
+                    $fileInfo = Get-Item -Path $filePath -Force -ErrorAction Stop
+                    $FileMetadata += @{
+                        FilePath = $filePath
+                        CreationTime = $fileInfo.CreationTime.ToString("yyyy-MM-dd HH:mm:ss")
+                        LastWriteTime = $fileInfo.LastWriteTime.ToString("yyyy-MM-dd HH:mm:ss")
+                        LastAccessTime = $fileInfo.LastAccessTime.ToString("yyyy-MM-dd HH:mm:ss")
+                        Length = $fileInfo.Length
+                        Attributes = $fileInfo.Attributes.ToString()
+                    }
+                }
+            }
+            catch {
+                # Silently skip files we can't access
+            }
+        }
+
+        $FileMetadata | ConvertTo-Json -Depth 3 | Out-File (Join-Path $RemoteRawDataPath "file_metadata.json") -Encoding UTF8
+        Write-Host "  Collected MACE timestamps for $($FileMetadata.Count) files"
 
         # --- 3. Antivirus Scans ---
 
@@ -247,6 +574,37 @@ if ($session) {
     # Local Execution
     Write-Host "--- Gather_Info.ps1: Starting local data collection ---"
 
+    # --- 0. Pre-Scan Remediation: rkill.exe ---
+    Write-Host "Pre-Scan Remediation: Downloading and executing rkill.exe..."
+    $rkillUrl = "https://download.bleepingcomputer.com/grinler/rkill.exe"
+    $rkillPath = Join-Path -Path $env:TEMP -ChildPath "rkill.exe"
+    $rkillLogPath = Join-Path -Path $RawDataPath -ChildPath "rkill_execution.log"
+
+    try {
+        # Download rkill.exe
+        Invoke-WebRequest -Uri $rkillUrl -OutFile $rkillPath -UseBasicParsing -ErrorAction Stop
+        Write-Host "rkill.exe downloaded successfully to ${rkillPath}"
+
+        # Execute rkill.exe silently
+        $rkillProcess = Start-Process -FilePath $rkillPath -ArgumentList "-s" -Wait -PassThru -NoNewWindow -RedirectStandardOutput $rkillLogPath
+        Write-Host "rkill.exe executed. Exit code: $($rkillProcess.ExitCode)"
+
+        # Log action to Steps_Taken.txt
+        $stepsLog = Join-Path -Path $RawDataPath -ChildPath "Steps_Taken.txt"
+        "$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss') :: Pre-Scan Remediation: rkill.exe executed (Exit Code: $($rkillProcess.ExitCode))" |
+            Out-File $stepsLog -Append -Encoding UTF8
+
+        # Clean up rkill executable
+        if (Test-Path $rkillPath) {
+            Remove-Item -Path $rkillPath -Force -ErrorAction SilentlyContinue
+        }
+    }
+    catch {
+        Write-Warning "rkill.exe execution failed: ${PSItem}"
+        "$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss') :: Pre-Scan Remediation: rkill.exe failed - ${PSItem}" |
+            Out-File (Join-Path -Path $RawDataPath -ChildPath "Steps_Taken.txt") -Append -Encoding UTF8
+    }
+
     # II. Persistent System Artifacts: Registry (Persistence & Execution Evidence)
     Write-Host "Collecting Registry Run Keys (Persistence)..."
     $RunKeyPaths = @(
@@ -260,6 +618,55 @@ if ($session) {
     }
     $RunKeyData | ConvertTo-Json -Depth 3 | Out-File (Join-Path $RawDataPath "registry_run_keys.json") -Encoding UTF8
 
+    # II. Persistent System Artifacts: Scheduled Tasks (Persistence Evidence)
+    Write-Host "Collecting Scheduled Tasks (Persistence)..."
+    try {
+        Get-ScheduledTask |
+            Select-Object TaskName, TaskPath, State,
+                @{Name='Actions';Expression={($_.Actions | Where-Object {$_.Execute} | ForEach-Object {$_.Execute}) -join '; '}},
+                @{Name='Arguments';Expression={($_.Actions | Where-Object {$_.Arguments} | ForEach-Object {$_.Arguments}) -join '; '}},
+                @{Name='Author';Expression={$_.Author}},
+                @{Name='Principal';Expression={$_.Principal.UserId}},
+                @{Name='Enabled';Expression={$_.Settings.Enabled}} |
+            ConvertTo-Json -Depth 3 | Out-File (Join-Path $RawDataPath "scheduled_tasks.json") -Encoding UTF8
+    }
+    catch {
+        Write-Warning "Could not collect scheduled tasks. Error: ${PSItem}"
+        "[]" | Out-File (Join-Path $RawDataPath "scheduled_tasks.json") -Encoding UTF8
+    }
+
+    # II. Persistent System Artifacts: Windows Services (Persistence Evidence)
+    Write-Host "Collecting Windows Services (Persistence)..."
+    try {
+        Get-CimInstance -ClassName Win32_Service |
+            Select-Object Name, DisplayName, State, StartMode, PathName,
+                StartName, ProcessId, Description,
+                @{Name='CreationClassName';Expression={$_.CreationClassName}} |
+            ConvertTo-Json -Depth 3 | Out-File (Join-Path $RawDataPath "services_config.json") -Encoding UTF8
+    }
+    catch {
+        Write-Warning "Could not collect Windows services. Error: ${PSItem}"
+        "[]" | Out-File (Join-Path $RawDataPath "services_config.json") -Encoding UTF8
+    }
+
+    # II. Persistent System Artifacts: WMI Event Subscriptions (Persistence Evidence)
+    Write-Host "Collecting WMI Event Subscriptions (Persistence)..."
+    try {
+        $WMIPersistence = @{
+            EventFilters = @(Get-CimInstance -Namespace root\subscription -ClassName __EventFilter |
+                Select-Object Name, Query, QueryLanguage, EventNamespace)
+            EventConsumers = @(Get-CimInstance -Namespace root\subscription -ClassName __EventConsumer |
+                Select-Object Name, @{Name='Type';Expression={$_.CimClass.CimClassName}})
+            FilterBindings = @(Get-CimInstance -Namespace root\subscription -ClassName __FilterToConsumerBinding |
+                Select-Object @{Name='Filter';Expression={$_.Filter.Name}}, @{Name='Consumer';Expression={$_.Consumer.Name}})
+        }
+        $WMIPersistence | ConvertTo-Json -Depth 4 | Out-File (Join-Path $RawDataPath "wmi_persistence.json") -Encoding UTF8
+    }
+    catch {
+        Write-Warning "Could not collect WMI event subscriptions. Error: ${PSItem}"
+        "@{EventFilters=@();EventConsumers=@();FilterBindings=@()}" | ConvertTo-Json | Out-File (Join-Path $RawDataPath "wmi_persistence.json") -Encoding UTF8
+    }
+
     # I. Volatile Data: Running Processes (Execution Evidence)
     Write-Host "Collecting Processes Snapshot (Execution)..."
     Get-CimInstance -ClassName Win32_Process |
@@ -272,17 +679,156 @@ if ($session) {
         Select-Object LocalAddress, LocalPort, RemoteAddress, RemotePort, State, OwningProcess |
         ConvertTo-Json -Depth 3 | Out-File (Join-Path $RawDataPath "netstat_snapshot.json") -Encoding UTF8
 
-    # III. Credential and User Activity: Security Event Logs (Credential Access Evidence)
-    Write-Host "Collecting Security Event Logs (Logons)..."
+    # III. Comprehensive Event Log Collection
+
+    # Security Event Logs (Logons, Process Creation, Services, Users, Object Access)
+    Write-Host "Collecting Security Event Logs..."
     try {
-        Get-WinEvent -LogName 'Security' -FilterXPath "*[System[(EventID=4624 or EventID=4672)]]" -MaxEvents 500 |
-            Select-Object TimeCreated, Id, Message |
-            ConvertTo-Json -Depth 3 | Out-File (Join-Path $RawDataPath "security_logons.json") -Encoding UTF8
+        # Event IDs: 4624 (Logon), 4672 (Admin), 4688 (Process Creation),
+        #            4697 (Service Install), 4720 (User Creation), 4663 (Object Access)
+        Get-WinEvent -LogName 'Security' -FilterXPath "*[System[(EventID=4624 or EventID=4672 or EventID=4688 or EventID=4697 or EventID=4720 or EventID=4663)]]" -MaxEvents 1000 |
+            Select-Object TimeCreated, Id, Message,
+                @{Name='ProcessName';Expression={$_.Properties[5].Value}},
+                @{Name='ProcessCommandLine';Expression={$_.Properties[8].Value}} |
+            ConvertTo-Json -Depth 3 | Out-File (Join-Path $RawDataPath "security_events.json") -Encoding UTF8
     }
     catch {
         Write-Warning "Could not collect security event logs. Error: ${PSItem}"
-        New-Item -Path (Join-Path $RawDataPath "security_logons.json") -ItemType File -Force | Out-Null
+        "[]" | Out-File (Join-Path $RawDataPath "security_events.json") -Encoding UTF8
     }
+
+    # PowerShell Operational Logs (Script Block Logging)
+    Write-Host "Collecting PowerShell Operational Logs..."
+    try {
+        Get-WinEvent -LogName 'Microsoft-Windows-PowerShell/Operational' -MaxEvents 500 |
+            Select-Object TimeCreated, Id, Message, LevelDisplayName |
+            ConvertTo-Json -Depth 3 | Out-File (Join-Path $RawDataPath "powershell_logs.json") -Encoding UTF8
+    }
+    catch {
+        Write-Warning "Could not collect PowerShell logs. Error: ${PSItem}"
+        "[]" | Out-File (Join-Path $RawDataPath "powershell_logs.json") -Encoding UTF8
+    }
+
+    # IV. Browser History and Downloads (Execution History Evidence)
+    Write-Host "Collecting Browser History and Downloads..."
+    $BrowserArtifacts = @()
+
+    # Chrome/Edge Chromium-based browsers
+    $ChromePaths = @(
+        "$env:LOCALAPPDATA\Google\Chrome\User Data\Default\History",
+        "$env:LOCALAPPDATA\Microsoft\Edge\User Data\Default\History"
+    )
+
+    # Firefox
+    $FirefoxProfilePath = "$env:APPDATA\Mozilla\Firefox\Profiles"
+    if (Test-Path $FirefoxProfilePath) {
+        $FirefoxProfiles = Get-ChildItem -Path $FirefoxProfilePath -Directory -ErrorAction SilentlyContinue
+        foreach ($profile in $FirefoxProfiles) {
+            $ChromePaths += Join-Path $profile.FullName "places.sqlite"
+        }
+    }
+
+    foreach ($browserDbPath in $ChromePaths) {
+        if (Test-Path $browserDbPath) {
+            try {
+                $browserName = if ($browserDbPath -like "*Chrome*") { "Chrome" }
+                               elseif ($browserDbPath -like "*Edge*") { "Edge" }
+                               elseif ($browserDbPath -like "*Firefox*") { "Firefox" }
+                               else { "Unknown" }
+
+                $destFileName = "${browserName}_History_$(Get-Date -Format 'yyyyMMdd_HHmmss').db"
+                $destPath = Join-Path $RawDataPath $destFileName
+
+                # Copy database file (locked files may fail, but we try)
+                Copy-Item -Path $browserDbPath -Destination $destPath -Force -ErrorAction Stop
+
+                $BrowserArtifacts += @{
+                    Browser = $browserName
+                    SourcePath = $browserDbPath
+                    CopiedTo = $destFileName
+                    Timestamp = (Get-Date).ToString("yyyy-MM-dd HH:mm:ss")
+                }
+
+                Write-Host "  Copied ${browserName} history database"
+            }
+            catch {
+                Write-Warning "  Could not copy browser history from ${browserDbPath}: ${PSItem}"
+            }
+        }
+    }
+
+    # Save manifest of collected browser artifacts
+    $BrowserArtifacts | ConvertTo-Json -Depth 3 | Out-File (Join-Path $RawDataPath "browser_artifacts.json") -Encoding UTF8
+
+    # V. MACE Timestamps for Suspicious Files (File System Artifacts)
+    Write-Host "Collecting MACE timestamps for referenced executables..."
+    $FileMetadata = @()
+    $UniqueFilePaths = @{}
+
+    # Extract file paths from Run keys
+    try {
+        $runKeysContent = Get-Content (Join-Path $RawDataPath "registry_run_keys.json") -Raw | ConvertFrom-Json
+        foreach ($runKey in $runKeysContent) {
+            $runKey.PSObject.Properties | Where-Object { $_.Name -notmatch '^PS' } | ForEach-Object {
+                if ($_.Value -match '([A-Za-z]:\\[^"]+\.exe)') {
+                    $UniqueFilePaths[$matches[1]] = $true
+                }
+            }
+        }
+    } catch { }
+
+    # Extract file paths from Scheduled Tasks
+    try {
+        $tasksContent = Get-Content (Join-Path $RawDataPath "scheduled_tasks.json") -Raw | ConvertFrom-Json
+        foreach ($task in $tasksContent) {
+            if ($task.Actions -and (Test-Path $task.Actions -ErrorAction SilentlyContinue)) {
+                $UniqueFilePaths[$task.Actions] = $true
+            }
+        }
+    } catch { }
+
+    # Extract file paths from Services
+    try {
+        $servicesContent = Get-Content (Join-Path $RawDataPath "services_config.json") -Raw | ConvertFrom-Json
+        foreach ($service in $servicesContent) {
+            if ($service.PathName -match '([A-Za-z]:\\[^"]+\.exe)') {
+                $UniqueFilePaths[$matches[1]] = $true
+            }
+        }
+    } catch { }
+
+    # Extract file paths from Processes
+    try {
+        $processesContent = Get-Content (Join-Path $RawDataPath "processes_snapshot.json") -Raw | ConvertFrom-Json
+        foreach ($process in $processesContent) {
+            if ($process.ExecutablePath -and (Test-Path $process.ExecutablePath -ErrorAction SilentlyContinue)) {
+                $UniqueFilePaths[$process.ExecutablePath] = $true
+            }
+        }
+    } catch { }
+
+    # Collect MACE timestamps for all unique file paths
+    foreach ($filePath in $UniqueFilePaths.Keys) {
+        try {
+            if (Test-Path $filePath) {
+                $fileInfo = Get-Item -Path $filePath -Force -ErrorAction Stop
+                $FileMetadata += @{
+                    FilePath = $filePath
+                    CreationTime = $fileInfo.CreationTime.ToString("yyyy-MM-dd HH:mm:ss")
+                    LastWriteTime = $fileInfo.LastWriteTime.ToString("yyyy-MM-dd HH:mm:ss")
+                    LastAccessTime = $fileInfo.LastAccessTime.ToString("yyyy-MM-dd HH:mm:ss")
+                    Length = $fileInfo.Length
+                    Attributes = $fileInfo.Attributes.ToString()
+                }
+            }
+        }
+        catch {
+            # Silently skip files we can't access
+        }
+    }
+
+    $FileMetadata | ConvertTo-Json -Depth 3 | Out-File (Join-Path $RawDataPath "file_metadata.json") -Encoding UTF8
+    Write-Host "  Collected MACE timestamps for $($FileMetadata.Count) files"
 
     # --- 3. Antivirus Scans ---
 
@@ -390,6 +936,21 @@ try {
 catch {
     Write-Error "Failed to parse results: $_"
     Write-Host "Continuing to AI analysis with raw data..." -ForegroundColor Yellow
+
+    # Use LLM to diagnose the parsing error if available
+    if (Get-Command Invoke-LLMErrorDiagnostics -ErrorAction SilentlyContinue) {
+        $parseScriptContent = Get-Content $ParseScriptPath -Raw
+        $codeContext = if ($parseScriptContent.Length -gt 2000) {
+            $parseScriptContent.Substring(0, 2000) + "`n... (truncated)"
+        } else {
+            $parseScriptContent
+        }
+
+        Invoke-LLMErrorDiagnostics `
+            -ErrorMessage $_.Exception.Message `
+            -CodeContext $codeContext `
+            -ScriptSection "Parse_Results.ps1 Execution"
+    }
 }
 
 # --- 5. Launch Qwen CLI with OpenRouter ---
@@ -413,6 +974,94 @@ if ([string]::IsNullOrWhiteSpace($apiToken)) {
 # Set environment variables for qwen CLI with OpenRouter
 $env:OPENROUTER_API_KEY = $apiToken
 # Note: qwen CLI may use different env var names, adjust as needed based on actual CLI behavior
+
+# --- LLM-Based Error Handler (Available after API token is validated) ---
+function Invoke-LLMErrorDiagnostics {
+    param(
+        [Parameter(Mandatory=$true)]
+        [string]$ErrorMessage,
+
+        [Parameter(Mandatory=$true)]
+        [string]$CodeContext,
+
+        [Parameter(Mandatory=$false)]
+        [string]$ScriptSection = "Unknown"
+    )
+
+    Write-Host ""
+    Write-Host "========================================" -ForegroundColor Yellow
+    Write-Host "  LLM Error Diagnostics Engine" -ForegroundColor Yellow
+    Write-Host "========================================" -ForegroundColor Yellow
+    Write-Host "An error occurred. Consulting AI for diagnosis..." -ForegroundColor Yellow
+    Write-Host ""
+
+    $diagnosticPrompt = @"
+You are a PowerShell scripting expert helping debug an error in the First-On-Scene forensic toolkit.
+
+**Error Details:**
+- Section: $ScriptSection
+- Error Message: $ErrorMessage
+
+**Code Context:**
+``````powershell
+$CodeContext
+``````
+
+**Your Task:**
+1. Analyze the error and identify the root cause
+2. Explain what went wrong in simple terms
+3. Provide a specific fix with corrected code
+4. If the error is environmental (e.g., permissions, missing dependencies), provide remediation steps
+
+**Format your response as:**
+## Root Cause
+[Brief explanation]
+
+## Fix
+``````powershell
+[Corrected code or remediation commands]
+``````
+
+## Explanation
+[Why this fix works]
+"@
+
+    try {
+        # Save diagnostic prompt to temp file
+        $tempPromptFile = Join-Path $env:TEMP "fos_error_diagnostic.txt"
+        $diagnosticPrompt | Out-File -FilePath $tempPromptFile -Encoding UTF8 -NoNewline
+
+        # Call LLM via qwen CLI (using already configured settings)
+        Write-Host "Querying LLM for error analysis..." -ForegroundColor Cyan
+        $diagnosticResult = cmd /c "type `"$tempPromptFile`" | npx --yes @qwen-code/qwen-code -p `"`""
+
+        # Clean up temp file
+        if (Test-Path $tempPromptFile) {
+            Remove-Item $tempPromptFile -Force
+        }
+
+        Write-Host ""
+        Write-Host "========================================" -ForegroundColor Green
+        Write-Host "  AI Diagnosis Complete" -ForegroundColor Green
+        Write-Host "========================================" -ForegroundColor Green
+        Write-Host $diagnosticResult
+        Write-Host ""
+        Write-Host "Note: Review the AI's suggestions before applying any fixes." -ForegroundColor Yellow
+        Write-Host ""
+
+        # Log diagnostic to Steps_Taken.txt
+        $stepsLog = Join-Path -Path $RawDataPath -ChildPath "Steps_Taken.txt"
+        "$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss') :: LLM Error Diagnostics - Section: $ScriptSection - Error: $ErrorMessage" |
+            Out-File $stepsLog -Append -Encoding UTF8
+
+        return $diagnosticResult
+    }
+    catch {
+        Write-Warning "LLM error diagnostics failed: ${PSItem}"
+        Write-Host "Continuing with standard error handling..."
+        return $null
+    }
+}
 
 # Prepare system prompt
 $SystemPromptPath = Join-Path -Path (Split-Path -Path $PSScriptRoot -Parent) -ChildPath "system_prompt.txt"
