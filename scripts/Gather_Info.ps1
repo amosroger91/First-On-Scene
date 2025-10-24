@@ -1,37 +1,4 @@
-<#
-.SYNOPSIS
-    Gathers essential volatile and persistent system artifacts for Triage Agent analysis.
-.DESCRIPTION
-    Collects live processes, network state, basic persistence mechanisms, and event logs 
-    using only native PowerShell and stores raw output in the 'results' directory.
-#>
-param(
-    [Parameter(Mandatory=$false)]
-    [string]$ComputerName = "localhost",
-
-    [Parameter(Mandatory=$false)]
-    [System.Management.Automation.PSCredential]$Credential
-)
-
-# Check for administrator privileges
-if (-not ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
-    Write-Warning "This script requires administrator privileges to collect all artifacts. Please run as an administrator."
-}
-
-# --- Remote Session Setup ---
-$session = $null
-if ($ComputerName -ne "localhost") {
-    Write-Host "Attempting to establish remote session to $ComputerName..."
-    try {
-        if ($Credential) {
-            $session = New-PSSession -ComputerName $ComputerName -Credential $Credential
-        } else {
-            $session = New-PSSession -ComputerName $ComputerName
-        }
-        Write-Host "Remote session established successfully."
-    } catch {
-        Write-Error "Failed to establish remote session to $ComputerName: ${PSItem}"
-        exit 1
+        Write-Error "Failed to establish remote session to ${ComputerName}: ${PSItem}"        exit 1
     }
 }
 
