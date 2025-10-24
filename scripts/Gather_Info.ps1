@@ -1140,11 +1140,33 @@ try {
     }
 
     Write-Host ""
+    Write-Host "========================================" -ForegroundColor Cyan
+    Write-Host "  Generating DOCX Report" -ForegroundColor Cyan
+    Write-Host "========================================" -ForegroundColor Cyan
+    Write-Host ""
+
+    # Generate professional DOCX report
+    $GenerateReportScript = Join-Path -Path $PSScriptRoot -ChildPath "Generate_Report.ps1"
+    if (Test-Path $GenerateReportScript) {
+        try {
+            & $GenerateReportScript -ComputerName $ComputerName
+        }
+        catch {
+            Write-Warning "DOCX report generation failed: $_"
+            Write-Host "Continuing without DOCX report. See error details above." -ForegroundColor Yellow
+        }
+    } else {
+        Write-Warning "Generate_Report.ps1 not found. Skipping DOCX report generation."
+    }
+
+    Write-Host ""
     Write-Host "========================================" -ForegroundColor Green
     Write-Host "  Triage Analysis Complete" -ForegroundColor Green
     Write-Host "========================================" -ForegroundColor Green
     Write-Host ""
     Write-Host "Check the results directory for the final analysis:" -ForegroundColor Cyan
+    Write-Host "  - results/Incident_Report_*.html (Professional HTML report)"
+    Write-Host "  - results/Incident_Report_*.docx (Professional DOCX report - if Word conversion succeeded)"
     Write-Host "  - results/findings.txt (AI analysis report)"
     Write-Host "  - results/Steps_Taken.txt (audit log)"
     Write-Host ""
