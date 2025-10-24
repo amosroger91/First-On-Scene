@@ -1,7 +1,7 @@
 <div align="center">
   <img src="https://github.com/amosroger91/First-On-Scene/blob/main/logo.png" alt="First-On-Scene Logo" width="300"/>
   <h1 style="margin-top: 0px;">First-On-Scene</h1>
-  <p style="margin-top: 0px; margin-bottom: 20px;">**Agentic Cyber Incident Response Triage Toolkit**</p>
+  <p style="margin-top: 0px">Agentic Cyber Incident Response Triage Toolkit</p>
 </div>
 
 ## 🚨 The Triage Agent's Mission: First Responder
