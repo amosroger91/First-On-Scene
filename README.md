@@ -1,4 +1,4 @@
-<div align="center">
+<div align="center" style="margin-bottom:-20px">
   <img src="https://github.com/amosroger91/First-On-Scene/blob/main/logo.png" alt="First-On-Scene Logo" width="300"/>
 </div>
 
