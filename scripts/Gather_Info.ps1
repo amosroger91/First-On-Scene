@@ -156,6 +156,23 @@ if ($session) {
                 }
             }
         }
+        if (-not $ClamAVPath) {
+            # Try to get install location from winget
+            try {
+                $wingetShow = winget show ClamAV.ClamAV
+                $installLocationLine = $wingetShow | Select-String -Pattern "InstallLocation"
+                if ($installLocationLine) {
+                    $installLocation = ($installLocationLine -split ':')[1].Trim()
+                    $ClamAVPath = Join-Path -Path $installLocation -ChildPath "clamscan.exe"
+                    if (-not (Test-Path $ClamAVPath)) {
+                        # Sometimes clamscan.exe is in a bin subfolder
+                        $ClamAVPath = Join-Path -Path $installLocation -ChildPath "bin\clamscan.exe"
+                    }
+                }
+            } catch {
+                Write-Warning "Could not determine ClamAV install location via winget on remote machine: ${PSItem}"
+            }
+        }
         if ($ClamAVPath) {
             $ClamAVLogPath = Join-Path -Path $RemoteRawDataPath -ChildPath "clamav_scan_results.txt"
             try {
@@ -176,9 +193,12 @@ if ($session) {
             Import-Module -Name Defender -ErrorAction SilentlyContinue
 
             if (Get-Command Start-MpScan -ErrorAction SilentlyContinue) {
-                # Start-MpScan is a cmdlet from the Defender module
-                # Use -Verbose to get more output, and capture all output streams (4>&1)
-                $scanResult = Start-MpScan -ScanType FullScan -ErrorAction Stop -Verbose 4>&1
+                Write-Host "Initiating Windows Defender scan as a background job on remote machine..."
+                $scanJob = Start-MpScan -ScanType FullScan -AsJob -ErrorAction Stop
+                Wait-Job -Job $scanJob -Timeout 3600 # Wait up to 1 hour for the scan to complete
+                $scanResult = Receive-Job -Job $scanJob
+                Remove-Job -Job $scanJob
+
                 $scanResult | Out-File $DefenderLogPath -Encoding UTF8
                 Write-Host "Windows Defender scan complete on remote machine. Results saved to ${DefenderLogPath}"
             } else {
@@ -267,6 +287,23 @@ if ($session) {
             }
         }
     }
+    if (-not $ClamAVPath) {
+        # Try to get install location from winget
+        try {
+            $wingetShow = winget show ClamAV.ClamAV
+            $installLocationLine = $wingetShow | Select-String -Pattern "InstallLocation"
+            if ($installLocationLine) {
+                $installLocation = ($installLocationLine -split ':')[1].Trim()
+                $ClamAVPath = Join-Path -Path $installLocation -ChildPath "clamscan.exe"
+                if (-not (Test-Path $ClamAVPath)) {
+                    # Sometimes clamscan.exe is in a bin subfolder
+                    $ClamAVPath = Join-Path -Path $installLocation -ChildPath "bin\clamscan.exe"
+                }
+            }
+        } catch {
+            Write-Warning "Could not determine ClamAV install location via winget: ${PSItem}"
+        }
+    }
     if ($ClamAVPath) {
         $ClamAVLogPath = Join-Path -Path $RawDataPath -ChildPath "clamav_scan_results.txt"
         try {
@@ -287,9 +324,12 @@ if ($session) {
         Import-Module -Name Defender -ErrorAction SilentlyContinue
 
         if (Get-Command Start-MpScan -ErrorAction SilentlyContinue) {
-            # Start-MpScan is a cmdlet from the Defender module
-            # Use -Verbose to get more output, and capture all output streams (4>&1)
-            $scanResult = Start-MpScan -ScanType FullScan -ErrorAction Stop -Verbose 4>&1
+            Write-Host "Initiating Windows Defender scan as a background job..."
+            $scanJob = Start-MpScan -ScanType FullScan -AsJob -ErrorAction Stop
+            Wait-Job -Job $scanJob -Timeout 3600 # Wait up to 1 hour for the scan to complete
+            $scanResult = Receive-Job -Job $scanJob
+            Remove-Job -Job $scanJob
+
             $scanResult | Out-File $DefenderLogPath -Encoding UTF8
             Write-Host "Windows Defender scan complete. Results saved to ${DefenderLogPath}"
         } else {
