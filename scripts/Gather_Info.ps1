@@ -193,14 +193,46 @@ if ($session) {
             Import-Module -Name Defender -ErrorAction SilentlyContinue
 
             if (Get-Command Start-MpScan -ErrorAction SilentlyContinue) {
-                Write-Host "Initiating Windows Defender scan as a background job on remote machine..."
-                $scanJob = Start-MpScan -ScanType FullScan -AsJob -ErrorAction Stop
-                Wait-Job -Job $scanJob -Timeout 3600 # Wait up to 1 hour for the scan to complete
-                $scanResult = Receive-Job -Job $scanJob
-                Remove-Job -Job $scanJob
+                # Check if Windows Defender Service is running
+                $DefenderService = Get-Service -Name WinDefend -ErrorAction SilentlyContinue
+                if ($DefenderService -and $DefenderService.Status -eq "Running") {
+                    Write-Host "Initiating Windows Defender scan as a background job on remote machine..."
+                    $scanJob = Start-MpScan -ScanType FullScan -AsJob -ErrorAction Stop
+                    
+                    # Monitor job status in a loop to get updates
+                    $timeout = 3600 # 1 hour timeout
+                    $sw = [System.Diagnostics.Stopwatch]::StartNew()
+                    do {
+                        Start-Sleep -Seconds 10
+                        $job = Get-Job -Id $scanJob.Id
+                        Write-Progress -Activity "Windows Defender Scan" -Status "Progress: $($job.State)" -SecondsRemaining ($timeout - $sw.Elapsed.TotalSeconds)
+                    } while ($job.State -eq "Running" -and $sw.Elapsed.TotalSeconds -lt $timeout)
+                    $sw.Stop()
 
-                $scanResult | Out-File $DefenderLogPath -Encoding UTF8
-                Write-Host "Windows Defender scan complete on remote machine. Results saved to ${DefenderLogPath}"
+                    if ($job.State -eq "Running") {
+                        Write-Warning "Windows Defender scan job timed out after $($timeout / 60) minutes on remote machine."
+                        Stop-Job -Job $scanJob -Force -ErrorAction SilentlyContinue
+                    }
+
+                    $scanResult = Receive-Job -Job $scanJob -Keep
+                    Remove-Job -Job $scanJob
+
+                    if ($scanResult) {
+                        $scanResult | Out-File $DefenderLogPath -Encoding UTF8
+                        Write-Host "Windows Defender scan complete on remote machine. Results saved to ${DefenderLogPath}"
+                    } else {
+                        Write-Warning "Windows Defender scan completed but returned no results on remote machine. Check logs for details."
+                        "Windows Defender scan completed but returned no results on remote machine." | Out-File $DefenderLogPath -Encoding UTF8
+                    }
+
+                    if ($job.State -eq "Failed") {
+                        Write-Warning "Windows Defender scan job failed on remote machine. Error details: $($job.ChildJobs[0].Host.UI.RawUI.GetBufferContents())"
+                        "Windows Defender scan job failed on remote machine. Error details: $($job.ChildJobs[0].JobStateInfo.Reason)" | Out-File $DefenderLogPath -Append -Encoding UTF8
+                    }
+                } else {
+                    Write-Warning "Windows Defender Service ('WinDefend') is not running on remote machine. Skipping scan."
+                    "Windows Defender Service ('WinDefend') is not running on remote machine. Skipping scan." | Out-File $DefenderLogPath -Encoding UTF8
+                }
             } else {
                 Write-Warning "Start-MpScan cmdlet not found on remote machine. Ensure Windows Defender is enabled and the Defender module is available. Skipping scan."
                 "Start-MpScan cmdlet not found on remote machine. Skipping scan." | Out-File $DefenderLogPath -Encoding UTF8
@@ -324,14 +356,46 @@ if ($session) {
         Import-Module -Name Defender -ErrorAction SilentlyContinue
 
         if (Get-Command Start-MpScan -ErrorAction SilentlyContinue) {
-            Write-Host "Initiating Windows Defender scan as a background job..."
-            $scanJob = Start-MpScan -ScanType FullScan -AsJob -ErrorAction Stop
-            Wait-Job -Job $scanJob -Timeout 3600 # Wait up to 1 hour for the scan to complete
-            $scanResult = Receive-Job -Job $scanJob
-            Remove-Job -Job $scanJob
+            # Check if Windows Defender Service is running
+            $DefenderService = Get-Service -Name WinDefend -ErrorAction SilentlyContinue
+            if ($DefenderService -and $DefenderService.Status -eq "Running") {
+                Write-Host "Initiating Windows Defender scan as a background job..."
+                $scanJob = Start-MpScan -ScanType FullScan -AsJob -ErrorAction Stop
+                
+                # Monitor job status in a loop to get updates
+                $timeout = 3600 # 1 hour timeout
+                $sw = [System.Diagnostics.Stopwatch]::StartNew()
+                do {
+                    Start-Sleep -Seconds 10
+                    $job = Get-Job -Id $scanJob.Id
+                    Write-Progress -Activity "Windows Defender Scan" -Status "Progress: $($job.State)" -SecondsRemaining ($timeout - $sw.Elapsed.TotalSeconds)
+                } while ($job.State -eq "Running" -and $sw.Elapsed.TotalSeconds -lt $timeout)
+                $sw.Stop()
 
-            $scanResult | Out-File $DefenderLogPath -Encoding UTF8
-            Write-Host "Windows Defender scan complete. Results saved to ${DefenderLogPath}"
+                if ($job.State -eq "Running") {
+                    Write-Warning "Windows Defender scan job timed out after $($timeout / 60) minutes."
+                    Stop-Job -Job $scanJob -Force -ErrorAction SilentlyContinue
+                }
+
+                $scanResult = Receive-Job -Job $scanJob -Keep
+                Remove-Job -Job $scanJob
+
+                if ($scanResult) {
+                    $scanResult | Out-File $DefenderLogPath -Encoding UTF8
+                    Write-Host "Windows Defender scan complete. Results saved to ${DefenderLogPath}"
+                } else {
+                    Write-Warning "Windows Defender scan completed but returned no results. Check logs for details."
+                    "Windows Defender scan completed but returned no results." | Out-File $DefenderLogPath -Encoding UTF8
+                }
+
+                if ($job.State -eq "Failed") {
+                    Write-Warning "Windows Defender scan job failed. Error details: $($job.ChildJobs[0].Host.UI.RawUI.GetBufferContents())"
+                    "Windows Defender scan job failed. Error details: $($job.ChildJobs[0].JobStateInfo.Reason)" | Out-File $DefenderLogPath -Append -Encoding UTF8
+                }
+            } else {
+                Write-Warning "Windows Defender Service ('WinDefend') is not running. Skipping scan."
+                "Windows Defender Service ('WinDefend') is not running. Skipping scan." | Out-File $DefenderLogPath -Encoding UTF8
+            }
         } else {
             Write-Warning "Start-MpScan cmdlet not found. Ensure Windows Defender is enabled and the Defender module is available. Skipping scan."
             "Start-MpScan cmdlet not found. Skipping scan." | Out-File $DefenderLogPath -Encoding UTF8
