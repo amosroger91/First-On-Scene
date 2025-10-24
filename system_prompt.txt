@@ -29,13 +29,16 @@ Your goal is to determine if the device you are running on has been suspected as
 ---
 
 ### Order of Operations (STRICTLY FOLLOWED)
-1. Call the **scripts/Gather_Info.ps1** script and log the action to `results/Steps_Taken.txt`.
-2. Call the **scripts/Parse_Results.ps1** script and log the action to `results/Steps_Taken.txt`.
-3. Review the results file (`results/Info_Results.txt`).
-4. Review the raw data files **only if necessary** for validation.
+
+**IMPORTANT**: Steps 1 and 2 have already been completed before you were launched. Data collection and parsing are done. Start from step 3.
+
+1. ✅ **ALREADY DONE**: Data collection (scripts/Gather_Info.ps1) has been executed.
+2. ✅ **ALREADY DONE**: Data parsing (scripts/Parse_Results.ps1) has been executed.
+3. **START HERE**: Review the results file (`results/Info_Results.txt`) - Use read_file or read_many_files tool.
+4. Review the raw data files **only if necessary** for validation (use read_file tool).
 5. Determine the classification (Event, Incident, or Breach) using the **Cybersecurity Classification Definitions**.
-6. **Write the final analysis report to `results/findings.txt`.**
-7. **Final Action:** Call **Problem_Detected.ps1 [REASON_CODE]** if the classification is a **Breach** or an uncontained **Incident**. Call **All_Clear.ps1** if the classification is a contained **Event** or a False Positive.
+6. **Write the final analysis report to `results/findings.txt`** using write_file tool.
+7. **Final Action**: Log your final action to `results/Steps_Taken.txt` (use write_file with append), then use bash tool to call either **scripts/Problem_Detected.ps1 [REASON_CODE]** OR **scripts/All_Clear.ps1**.
 
 ---
 

@@ -4,122 +4,237 @@
   <p style="margin-top: 0px; margin-bottom: 20px;">**Agentic Cyber Incident Response Triage Toolkit**</p>
 </div>
 
-## 🚨 The Triage Agent's Mission: First Responder
+## 🚨 The Triage Agent's Mission
 
-Our purpose when responding to a cybersecurity event is to essentially act as the **First Responding Officer** dispatched to a breaking and entering alarm. This mindset defines our duties, constrains our actions, and sets our critical initial goals.
-
-The security systems we deploy—your antivirus, EDR solutions, network monitors, and even alert-fatigued client reports—are our **motion detectors, door alarms, and security cameras.** When an alert is triggered, you, the Triage Agent, are the officer dispatched to assess the immediate scene.
+**First-On-Scene** acts as a **First Responding Officer** to cybersecurity incidents. When your antivirus, EDR, or network monitors trigger an alert, this toolkit performs automated forensic triage to determine if a real threat exists—separating actual incidents from false positives with AI-powered analysis.
 
 ---
 
-## 🔍 The Responding Officer's Duties vs. The Triage Agent's Duties
+## 🚀 Quick Start
 
-A Responding Officer arriving at a crime scene must secure the area and, without contaminating any evidence, quickly determine what happened and what happens next. Our role is a direct parallel: we must maintain a **high degree of skepticism** while seeking deterministic proof.
+**Run one command. Get instant AI-powered triage.**
+
+### Prerequisites
+1. **Administrator PowerShell** - Required for forensic data collection
+2. **OpenRouter API Key** (FREE) - Get yours at [openrouter.ai/keys](https://openrouter.ai/keys)
+   - No credit card required
+   - Takes 2 minutes to set up
+   - You'll be prompted on first run
+
+### Local Execution
+
+**One-liner (download and run):**
+```powershell
+$d=(Join-Path $env:TEMP "FOS_Run"); New-Item -ItemType Directory -Path $d -Force | Out-Null; iwr "https://github.com/amosroger91/First-On-Scene/archive/refs/heads/main.zip" -OutFile "$d\m.zip" -UseBasicParsing; Expand-Archive -Path "$d\m.zip" -DestinationPath $d -Force; & "$d\First-On-Scene-main\scripts\Gather_Info.ps1"
+```
+
+**From cloned repository:**
+```powershell
+.\scripts\Gather_Info.ps1
+```
+
+**What happens automatically:**
+1. ✅ Collects forensic artifacts (processes, registry, network, event logs)
+2. ✅ Parses and analyzes the data
+3. ✅ Launches AI triage using Qwen3 Coder 480B (via OpenRouter)
+4. ✅ Generates detailed findings report
+5. ✅ Makes final call: **Problem Detected** or **All Clear**
+
+### Remote Execution
+
+Analyze a remote machine (requires WinRM enabled):
+
+```powershell
+.\scripts\Gather_Info.ps1 -ComputerName "RemotePC" -Credential (Get-Credential)
+```
+
+**Enable WinRM on target machine:**
+```powershell
+Enable-PSRemoting -Force
+```
+
+---
+
+## 🤖 Why OpenRouter? Free Access to Cutting-Edge AI
+
+**First-On-Scene uses OpenRouter with the Qwen3 Coder 480B A35B model** to provide **completely free** AI-powered incident triage.
+
+### The Engineering Decision: Cost vs. Performance
+
+We understand that requiring an OpenRouter account is an extra step. However, this is the **best engineering decision** for keeping this tool truly free:
+
+| Provider | Model Quality | Cost | Verdict |
+| :--- | :--- | :--- | :--- |
+| **OpenRouter (Our Choice)** | ✅ Cutting-edge (Qwen3 Coder 480B) | ✅ **100% FREE** | ✅ **Best Option** |
+| Google Gemini | ✅ Good | ❌ **Paid API** (after trial) | ❌ Not viable |
+| OpenAI GPT | ✅ Excellent | ❌ **Expensive** | ❌ Not viable |
+| Claude API | ✅ Excellent | ❌ **Paid** | ❌ Not viable |
+
+### What is OpenRouter?
+
+[OpenRouter](https://openrouter.ai) is an API gateway providing **unified access to dozens of AI models**. Their free tier includes:
+- **Qwen3 Coder 480B A35B** (what we use) - Massive model specialized for code and technical analysis
+- Qwen 2.5 72B Instruct - Larger general-purpose model
+- Qwen 2.5 Coder 32B Instruct - Alternative coder model
+
+### Setup (One-Time, 2 Minutes)
+
+1. **Create free account**: Visit [openrouter.ai/keys](https://openrouter.ai/keys)
+2. **Generate API key**: Click "Create Key" (no credit card)
+3. **Run First-On-Scene**: You'll be prompted for the key on first run
+4. **Done**: Key is securely stored in Windows Credential Manager for future runs
+
+**Yes, it's an extra step.** But it means:
+- ✅ State-of-the-art AI analysis for $0
+- ✅ No monthly subscriptions or usage limits (within free tier)
+- ✅ A tool that works long-term without asking for payment
+
+We chose this path to ensure **First-On-Scene remains truly free and accessible** to MSPs, IT professionals, and security teams of all sizes.
+
+---
+
+## 🔍 The Triage Agent's Approach
+
+A Responding Officer arriving at a crime scene must secure the area and, without contaminating evidence, quickly determine what happened. Our approach directly parallels this:
 
 | Responding Officer Duty | Triage Agent Duty |
 | :--- | :--- |
-| **Determine if a "crime" has been committed.** | **Determine if a malicious security event has definitively occurred** by separating actual threats from false positives. |
-| **Determine if the "crime" is ongoing.** | **Determine if the attack is ongoing and uncontained,** checking for active processes, network connections, and persistence. |
-| **Document the crime scene without tampering with the evidence.** | **Document every action taken** to preserve the integrity of the scene. All commands must be logged to `Steps_Taken.txt`. |
-| **Interview the witnesses.** | **Gather information from the client** about what they observed or what actions they took. |
-| **Check the cameras and logs.** | **Execute `scripts/Gather_Info.ps1` and `scripts/Parse_Results.ps1`** to systematically collect and review system logs and forensic data (`results/Info_Results.txt`). |
-| **Determine the required escalation.** | **Make the final decisive call** based on the classification (Event, Incident, or Breach). |
+| **Determine if a "crime" occurred** | **Determine if a malicious event definitively occurred** by separating threats from false positives |
+| **Determine if "crime" is ongoing** | **Determine if attack is ongoing/uncontained**, checking active processes, network connections, persistence |
+| **Document without tampering** | **Document every action** to preserve integrity. All commands logged to `Steps_Taken.txt` |
+| **Interview witnesses** | **Gather info from client** about what they observed or actions taken |
+| **Check cameras and logs** | **Execute data collection and parsing** to systematically review logs and forensic data |
+| **Determine escalation** | **Make final decisive call** based on classification (Event, Incident, or Breach) |
 
 ---
 
-## 🛠️ TOOLING & ARTIFACTS: The Agentic Triage Strategy
+## 🛠️ How It Works: The Agentic Triage Strategy
 
-The **First-On-Scene** agent operates on a **Structured LLM Triage with Human Vetting** strategy. The core idea is to treat the LLM as a scoring engine for a pre-defined list of forensic indicators derived from collected artifacts.
+**First-On-Scene** operates on a **Structured LLM Triage** strategy, treating the AI as a scoring engine for pre-defined forensic indicators.
 
-### 1. The LLM Scoring Engine
+### Forensic Analysis Categories
 
-The Large Language Model (LLM) is designed to rapidly process and score specific, structured findings generated by `scripts/Parse_Results.ps1`. This determines the severity and category of the alert, serving as the primary input for the Triage Agent's final decision.
+The AI analyzes four key categories:
 
-| Category | LLM Input/Task | LLM Output Goal (Found in `results/Info_Results.txt`) |
+| Category | What It Checks | AI Task |
 | :--- | :--- | :--- |
-| **Persistence** | **Input:** Registry Keys (Run, RunOnce), WMI data. **Task:** "Are there any non-standard entries in these keys?" | List of suspect key/value pairs. |
-| **Execution** | **Input:** Prefetch/AmCache data. **Task:** "Identify all processes executed from `$user_profiles` or `C:\Temp`." | List of suspect process paths. |
-| **Network** | **Input:** `netstat` and DNS cache output. **Task:** "Are there connections to any IPs with ports 80/443 that are NOT common services (Google, Microsoft, etc.)?" | List of unusual external IPs/Ports. |
-| **Credential Access** | **Input:** Security Event Logs (4624/4672). **Task:** "Was a logon event for the temporary admin account immediately followed by a Service logon (type 5)?" | YES/NO finding. |
+| **Persistence** | Registry Run keys | Identify non-standard startup entries |
+| **Execution** | Running processes | Flag processes from user profiles/temp dirs |
+| **Network** | Active connections | Find unusual external connections |
+| **Credential Access** | Security event logs | Detect suspicious logon patterns (Event IDs 4624/4672) |
 
-### 2. Forensic Artifacts Collected by `scripts/Gather_Info.ps1`
+### Forensic Artifacts Collected
 
-The `Gather_Info.ps1` script targets the following artifacts to provide a full, defensible assessment. The current implementation focuses on the artifacts highlighted in **bold**.
+**Currently Implemented:**
+- ✅ **Running Processes** - All active processes with paths and command lines
+- ✅ **Network Connections** - TCP connections with owning processes
+- ✅ **Registry Run Keys** - Persistence mechanisms (HKCU/HKLM)
+- ✅ **Security Event Logs** - Logon events (4624/4672)
+- ✅ **Antivirus Scans** - ClamAV and Windows Defender results
 
-#### I. Volatile Data (Memory and Live State)
-These artifacts capture the current state and disappear when the device is powered off.
-* **Snapshot of Every Running Process:** Details of all active processes.
-* **Network Connection Snapshot (netstat):** Current active connections and their owning process.
-* *Full Memory (RAM) Image (Future)*: For discovering live malware code and credentials.
-* *System Logs (Time-Boxed)*: Windows Event Logs (System, Application, Security, PowerShell, etc.).
-
-#### II. Persistent System Artifacts (Disk & Configuration)
-These detail the long-term state and history of the system.
-* **Snapshot of the Registry (Run Keys):** Specifically targets persistence and execution evidence.
-* *Full Disk Image (Future)*: Complete copy of the hard drive for deep analysis.
-* *System and Application Artifacts*: Prefetch Files, Jump Lists, LNK Files, ShellBags, and Windows Error Reporting (WER) Files.
-* *Snapshot of the Group Policy*: Configuration settings via GPOs.
-
-#### III. Credential and User Activity & IV. Security/Inventory
-* **Security Event Logs (Logons):** Specifically valuable for successful logon (4624) and admin logon (4672) events.
-* *Antivirus/EDR Logs*: High-fidelity security logs for context.
-* *Credential Manager Data*: Encrypted storage files for saved credentials.
-* *Browser History and Related Data*: History, cookies, and download logs.
-* *Hardware/Physical Inventory Artifacts*: USB Device History and System Information.
+**Planned for Future:**
+- Full memory (RAM) image
+- Full disk image
+- Prefetch files, Jump Lists, LNK files
+- Browser history and downloads
+- USB device history
+- Credential Manager data
 
 ---
 
-## ⚙️ CRITICAL GOALS & CONSTRAINTS
+## ⚙️ Output & Decision Making
 
-### 1. The Call (Final Action)
-Your final output **MUST** be a decisive call:
-* **`scripts/Problem_Detected.ps1 [REASON_CODE]`**: Call if the classification is a **Breach** or an uncontained **Incident**. The argument **MUST** be a single, capitalized, concise summary (e.g., "MALWARE_DETECTED").
-* **`scripts/All_Clear.ps1`**: Call if the classification is a contained **Event** or a False Positive.
+### Final Action
 
-### 2. Evidence Integrity (Documentation)
-* **FORBIDDEN ACTIONS:** You are **STRICTLY FORBIDDEN** from executing any command not explicitly listed in the 'Tools' section.
-* **MANDATORY LOGGING:** You must track every single script execution in `Steps_Taken.txt`.
-* **MANDATORY REPORTING:** The final analysis **MUST** be written in structured Markdown to `findings.txt`.
+The AI must make a decisive call:
+
+- **`scripts/Problem_Detected.ps1 [REASON_CODE]`** - Called if classification is a **Breach** or uncontained **Incident**
+  - Argument must be capitalized, concise (e.g., "MALWARE_DETECTED")
+  - Displays critical alert and logs to `results/Steps_Taken.txt`
+
+- **`scripts/All_Clear.ps1`** - Called if classification is a contained **Event** or False Positive
+  - Logs clearance action
+
+### Output Files
+
+All analysis results are saved to the `results/` directory:
+
+- **`findings.txt`** - MANDATORY: Structured Markdown report explaining analysis and findings
+- **`Steps_Taken.txt`** - MANDATORY: Append-only audit log of all actions
+- **`Info_Results.txt`** - Structured JSON with parsed triage indicators
+- Raw forensic data (JSON files)
 
 ---
 
-## 🗺️ ORDER OF OPERATIONS (STRICTLY FOLLOWED)
+## 🗺️ Automated Workflow
 
-1. Call **`scripts/Gather_Info.ps1`** and log the action to `results/Steps_Taken.txt`.
-2. Call **`scripts/Parse_Results.ps1`** and log the action to `results/Steps_Taken.txt`.
-3. Review the structured results file (`results/Info_Results.txt`) containing the LLM's forensic scoring.
-4. Determine the classification (Event, Incident, or Breach) using the **Cybersecurity Classification Definitions**.
-5. **Write the final analysis report to `findings.txt`**.
-6. **Final Action:** Call either **`scripts/Problem_Detected.ps1 [REASON_CODE]`** or **`scripts/All_Clear.ps1`**.
+When you run `.\scripts\Gather_Info.ps1`, here's what happens:
+
+1. **Data Collection** - `Gather_Info.ps1` collects forensic artifacts
+2. **Parsing** - `Parse_Results.ps1` runs automatically, structures data into `Info_Results.txt`
+3. **AI Analysis** - Qwen CLI launches with OpenRouter, analyzes findings
+4. **Report Generation** - AI writes detailed analysis to `findings.txt`
+5. **Final Decision** - AI executes either `Problem_Detected.ps1` or `All_Clear.ps1`
+
+**Everything is logged to `results/Steps_Taken.txt` for audit trail.**
 
 ---
 
 ## 🔒 PowerShell Remoting Prerequisites
 
-For remote execution, PowerShell Remoting must be enabled on the target machine(s). To enable it, run the following command in an **Administrator PowerShell** session on the target machine:
+For remote execution, PowerShell Remoting must be enabled on target machine(s).
 
+**On the target machine** (run as Administrator):
 ```powershell
 Enable-PSRemoting -Force
 ```
 
-Ensure appropriate firewall rules are in place to allow WinRM (port 5985 for HTTP, 5986 for HTTPS) traffic.
+**Firewall requirements:**
+- Allow WinRM traffic (port 5985 for HTTP, 5986 for HTTPS)
 
 ---
 
-## 🚀 Quick Run
+## 📊 Cybersecurity Classification Framework
 
-To quickly execute the Triage Agent, open PowerShell as Administrator and run the following command:
+The AI uses these definitions to classify findings:
 
-### Local Execution (Default)
+- **Breach of Confidentiality** - Unauthorized access/disclosure of confidential information
+- **Malware** - Intentionally harmful software inserted in system
+- **Ransomware** - Malicious attack encrypting organization data, demanding payment
+- **Unauthorized Access** - Logical/physical access without permission
+- **Phishing** - Fraudulent attempt to acquire sensitive data
+- **Spyware** - Software secretly gathering information
+- **Virus** - Self-replicating program infecting system
 
-```powershell
-$d=(Join-Path $env:TEMP "FOS_Run"); New-Item -ItemType Directory -Path $d -Force | Out-Null; iwr "https://github.com/amosroger91/First-On-Scene/archive/refs/heads/main.zip" -OutFile "$d\m.zip" -UseBasicParsing; Expand-Archive -Path "$d\m.zip" -DestinationPath $d -Force; & "$d\First-On-Scene-main\scripts\Gather_Info.ps1"
-```
+(See `system_prompt.txt` for complete classification definitions)
 
-### Remote Execution
+---
 
-To run against a remote computer, specify the `-ComputerName` parameter. If credentials are required, you will be prompted:
+## 🤝 Contributing
 
-```powershell
-$d=(Join-Path $env:TEMP "FOS_Run"); New-Item -ItemType Directory -Path $d -Force | Out-Null; iwr "https://github.com/amosroger91/First-On-Scene/archive/refs/heads/main.zip" -OutFile "$d\m.zip" -UseBasicParsing; Expand-Archive -Path "$d\m.zip" -DestinationPath $d -Force; & "$d\First-On-Scene-main\scripts\Gather_Info.ps1" -ComputerName "RemotePC" -Credential (Get-Credential)
-```
+First-On-Scene is designed for MSPs and incident responders. Contributions are welcome:
+
+- **Forensic Artifacts**: Add new data sources to `Gather_Info.ps1`
+- **Triage Logic**: Improve scoring in `Parse_Results.ps1`
+- **Documentation**: Help improve setup guides and usage docs
+
+---
+
+## 📝 License
+
+This project is open source. See LICENSE file for details.
+
+---
+
+## 🔗 Links
+
+- **OpenRouter**: https://openrouter.ai
+- **Get API Key**: https://openrouter.ai/keys (free, no credit card)
+- **GitHub Issues**: https://github.com/amosroger91/First-On-Scene/issues
+
+---
+
+<div align="center">
+  <p><strong>Built for MSPs, IT Professionals, and Security Teams</strong></p>
+  <p>Powered by AI • Completely Free • Evidence-Preserving</p>
+</div>

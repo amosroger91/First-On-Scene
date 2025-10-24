@@ -156,23 +156,6 @@ if ($session) {
                 }
             }
         }
-        if (-not $ClamAVPath) {
-            # Try to get install location from winget
-            try {
-                $wingetShow = winget show ClamAV.ClamAV
-                $installLocationLine = $wingetShow | Select-String -Pattern "InstallLocation"
-                if ($installLocationLine) {
-                    $installLocation = ($installLocationLine -split ':')[1].Trim()
-                    $ClamAVPath = Join-Path -Path $installLocation -ChildPath "clamscan.exe"
-                    if (-not (Test-Path $ClamAVPath)) {
-                        # Sometimes clamscan.exe is in a bin subfolder
-                        $ClamAVPath = Join-Path -Path $installLocation -ChildPath "bin\clamscan.exe"
-                    }
-                }
-            } catch {
-                Write-Warning "Could not determine ClamAV install location via winget on remote machine: ${PSItem}"
-            }
-        }
         if ($ClamAVPath) {
             $ClamAVLogPath = Join-Path -Path $RemoteRawDataPath -ChildPath "clamav_scan_results.txt"
             try {
@@ -319,23 +302,6 @@ if ($session) {
             }
         }
     }
-    if (-not $ClamAVPath) {
-        # Try to get install location from winget
-        try {
-            $wingetShow = winget show ClamAV.ClamAV
-            $installLocationLine = $wingetShow | Select-String -Pattern "InstallLocation"
-            if ($installLocationLine) {
-                $installLocation = ($installLocationLine -split ':')[1].Trim()
-                $ClamAVPath = Join-Path -Path $installLocation -ChildPath "clamscan.exe"
-                if (-not (Test-Path $ClamAVPath)) {
-                    # Sometimes clamscan.exe is in a bin subfolder
-                    $ClamAVPath = Join-Path -Path $installLocation -ChildPath "bin\clamscan.exe"
-                }
-            }
-        } catch {
-            Write-Warning "Could not determine ClamAV install location via winget: ${PSItem}"
-        }
-    }
     if ($ClamAVPath) {
         $ClamAVLogPath = Join-Path -Path $RawDataPath -ChildPath "clamav_scan_results.txt"
         try {
@@ -410,7 +376,132 @@ if ($session) {
 
 Write-Host "--- Gather_Info.ps1: Collection Complete ---"
 
-# Launch Gemini CLI with system prompt
+# --- 4. Automatically Parse Results ---
+Write-Host ""
+Write-Host "========================================" -ForegroundColor Cyan
+Write-Host "  Parsing Collected Data" -ForegroundColor Cyan
+Write-Host "========================================" -ForegroundColor Cyan
+
+$ParseScriptPath = Join-Path -Path $PSScriptRoot -ChildPath "Parse_Results.ps1"
+try {
+    & $ParseScriptPath
+    Write-Host "Data parsing completed successfully." -ForegroundColor Green
+}
+catch {
+    Write-Error "Failed to parse results: $_"
+    Write-Host "Continuing to AI analysis with raw data..." -ForegroundColor Yellow
+}
+
+# --- 5. Launch Qwen CLI with OpenRouter ---
+Write-Host ""
+Write-Host "========================================" -ForegroundColor Cyan
+Write-Host "  Launching AI Triage Analysis" -ForegroundColor Cyan
+Write-Host "========================================" -ForegroundColor Cyan
+
+# Get or prompt for API token
+$TokenScriptPath = Join-Path -Path $PSScriptRoot -ChildPath "Manage_API_Token.ps1"
+Write-Host "Checking for OpenRouter API token..."
+
+$apiToken = & $TokenScriptPath -Action "Prompt"
+
+if ([string]::IsNullOrWhiteSpace($apiToken)) {
+    Write-Error "No API token available. Cannot proceed with AI analysis."
+    Write-Host "Please obtain an API token from https://openrouter.ai/keys and run this script again." -ForegroundColor Yellow
+    exit 1
+}
+
+# Set environment variables for qwen CLI with OpenRouter
+$env:OPENROUTER_API_KEY = $apiToken
+# Note: qwen CLI may use different env var names, adjust as needed based on actual CLI behavior
+
+# Prepare system prompt
 $SystemPromptPath = Join-Path -Path (Split-Path -Path $PSScriptRoot -Parent) -ChildPath "system_prompt.txt"
-Write-Host "Launching Gemini CLI with system prompt: $SystemPromptPath"
-Start-Process -FilePath "npx" -ArgumentList "gemini", "-p", "$SystemPromptPath" -NoNewWindow -Wait
+Write-Host "System prompt loaded: $SystemPromptPath"
+
+# OpenRouter model - Using Qwen3 Coder 480B A35B (free tier)
+# Alternative free models: qwen/qwen-2.5-72b-instruct:free, qwen/qwen-2.5-coder-32b-instruct:free
+$OpenRouterModel = "qwen/qwen3-coder:free"
+Write-Host "Model: $OpenRouterModel (via OpenRouter)" -ForegroundColor Cyan
+Write-Host ""
+
+# Configure qwen CLI settings for OpenRouter
+Write-Host "Configuring qwen CLI for OpenRouter..." -ForegroundColor Cyan
+$qwenConfigDir = Join-Path $env:USERPROFILE ".qwen"
+$qwenSettingsPath = Join-Path $qwenConfigDir "settings.json"
+
+# Create .qwen directory if it doesn't exist
+if (-(Test-Path $qwenConfigDir)) {
+    New-Item -ItemType Directory -Path $qwenConfigDir -Force | Out-Null
+}
+
+# Create/Update settings.json for OpenRouter
+$qwenSettings = @{
+    ideMode = $true
+    selectedAuthType = "openai"
+    apiConfiguration = @{
+        apiKey = $apiToken
+        baseURL = "https://openrouter.ai/api/v1"
+        modelId = $OpenRouterModel
+    }
+    hasSeenIdeIntegrationNudge = $true
+}
+
+# Use UTF8NoBOM to avoid BOM characters that break JSON parsing
+$jsonContent = $qwenSettings | ConvertTo-Json -Depth 3
+[System.IO.File]::WriteAllText($qwenSettingsPath, $jsonContent, (New-Object System.Text.UTF8Encoding($false)))
+Write-Host "Qwen CLI configured successfully." -ForegroundColor Green
+Write-Host ""
+
+# Launch Qwen CLI with OpenRouter configuration
+# qwen CLI supports OpenAI-compatible endpoints via --openai-base-url
+# Using -p with file path to avoid command-line parsing issues
+# Using --yolo mode to automatically approve all tool executions for full automation
+Write-Host "Launching Qwen CLI in automated triage mode..." -ForegroundColor Cyan
+Write-Host "The AI will now analyze the collected data and make a final determination." -ForegroundColor Yellow
+Write-Host ""
+
+try {
+    # Change to repository root for qwen CLI execution
+    $repoRoot = Split-Path -Path $PSScriptRoot -Parent
+    Set-Location $repoRoot
+
+    Write-Host "Executing qwen CLI..." -ForegroundColor Gray
+    Write-Host ""
+
+    # Read system prompt
+    $SystemPromptContent = Get-Content $SystemPromptPath -Raw
+
+    # Create a temporary file with the system prompt to avoid command-line parsing issues
+    $tempPromptFile = Join-Path $env:TEMP "fos_system_prompt.txt"
+    $SystemPromptContent | Out-File -FilePath $tempPromptFile -Encoding UTF8 -NoNewline
+
+    # Since qwen settings are now configured, we can simply run qwen CLI
+    # It will use the settings from ~/.qwen/settings.json
+    $command = "type `"$tempPromptFile`" | npx --yes @qwen-code/qwen-code --yolo -p `"`""
+
+    Write-Host "Command: $command" -ForegroundColor Gray
+    Write-Host ""
+
+    # Execute via cmd for proper pipe handling
+    cmd /c $command
+
+    # Clean up temp file
+    if (Test-Path $tempPromptFile) {
+        Remove-Item $tempPromptFile -Force
+    }
+
+    Write-Host ""
+    Write-Host "========================================" -ForegroundColor Green
+    Write-Host "  Triage Analysis Complete" -ForegroundColor Green
+    Write-Host "========================================" -ForegroundColor Green
+    Write-Host ""
+    Write-Host "Check the results directory for the final analysis:" -ForegroundColor Cyan
+    Write-Host "  - results/findings.txt (AI analysis report)"
+    Write-Host "  - results/Steps_Taken.txt (audit log)"
+    Write-Host ""
+}
+catch {
+    Write-Error "Failed to launch Qwen CLI: $_"
+    Write-Host "Error details: $($_.Exception.Message)" -ForegroundColor Red
+    exit 1
+}

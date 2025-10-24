@@ -1,2 +1,18 @@
 results/
-results/Steps_Taken.txt
+*.txt
+!README.md
+!CLAUDE.md
+!system_prompt.txt
+
+# Claude Code specific
+.claude/
+.claudeignore
+
+# Temporary files
+*.tmp
+*.temp
+self_thought.txt
+
+# OS specific
+.DS_Store
+Thumbs.db
