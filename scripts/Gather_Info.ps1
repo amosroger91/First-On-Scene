@@ -1,55 +1,10 @@
-        Write-Error "Failed to establish remote session to ${ComputerName}: ${PSItem}"        exit 1
-    }
-}
-
-# --- Winget and Software Installation Check ---
-function Test-WingetInstallation {
-    if (-not (Get-Command winget.exe -ErrorAction SilentlyContinue)) {
-        Write-Warning "Winget is not installed or not in PATH. Please install Winget from the Microsoft Store or https://github.com/microsoft/winget-cli/releases"
-        return $false
-    }
-    return $true
-}
-
-function Install-Software {
-    param(
-        [Parameter(Mandatory=$true)]
-        [string]$PackageId,
-        [Parameter(Mandatory=$true)]
-        [string]$FriendlyName
-    )
-
-    Write-Host "Checking for $FriendlyName..."
-    try {
-        $installed = winget list --id $PackageId --exact -q
-        if ($installed) {
-            Write-Host "$FriendlyName is already installed."
-        } else {
-            Write-Host "Installing $FriendlyName..."
-            winget install --id $PackageId --exact --accept-package-agreements --accept-source-agreements -q
-            if ($LASTEXITCODE -eq 0) {
-                Write-Host "$FriendlyName installed successfully."
-            } else {
-                Write-Warning "Failed to install $FriendlyName. Winget exit code: $LASTEXITCODE"
-            }
-        }
-    } catch {
-        Write-Warning "Error checking/installing ${FriendlyName}: ${PSItem}"
-    }
-}
-
-if (Test-WingetInstallation) {
-    Write-Host "Winget is installed. Checking for required software..."
-    Install-Software -PackageId "Git.Git" -FriendlyName "Git"
-    Install-Software -PackageId "OpenJS.NodeJS" -FriendlyName "Node.js" # This should include npm
-    Install-Software -PackageId "ClamAV.ClamAV" -FriendlyName "ClamAV" # Assuming a winget package ID
-    Install-Software -PackageId "Malwarebytes.Malwarebytes" -FriendlyName "Malwarebytes" # Assuming a winget package ID
-} else {
-    Write-Warning "Skipping software installation as Winget is not available."
-}
-
-$RawDataPath = Join-Path -Path (Split-Path -Path $PSScriptRoot -Parent) -ChildPath "results"
-
+<#
+.SYNOPSIS
+    Gathers essential volatile and persistent system artifacts for Triage Agent analysis.
+.DESCRIPTION
+    Collects live processes, network state, basic persistence mechanisms, and event logs
+    using only native PowerShell and stores raw output in the 'results' directory.
+#>
 param(
     [Parameter(Mandatory=$false)]
     [string]$ComputerName = "localhost",
@@ -66,7 +21,7 @@ if (-not ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdenti
 # --- Remote Session Setup ---
 $session = $null
 if ($ComputerName -ne "localhost") {
-    Write-Host "Attempting to establish remote session to $ComputerName..."
+    Write-Host "Attempting to establish remote session to ${ComputerName}..."
     try {
         if ($Credential) {
             $session = New-PSSession -ComputerName $ComputerName -Credential $Credential
@@ -75,12 +30,12 @@ if ($ComputerName -ne "localhost") {
         }
         Write-Host "Remote session established successfully."
     } catch {
-        Write-Error "Failed to establish remote session to $ComputerName: ${PSItem}"
+        Write-Error "Failed to establish remote session to ${ComputerName}: ${PSItem}"
         exit 1
     }
 }
 
-# --- Winget and Software Installation Check ---
+# --- Winget and Software Installation Check (Always run locally) ---
 function Test-WingetInstallation {
     if (-not (Get-Command winget.exe -ErrorAction SilentlyContinue)) {
         Write-Warning "Winget is not installed or not in PATH. Please install Winget from the Microsoft Store or https://github.com/microsoft/winget-cli/releases"
@@ -97,18 +52,18 @@ function Install-Software {
         [string]$FriendlyName
     )
 
-    Write-Host "Checking for $FriendlyName..."
+    Write-Host "Checking for ${FriendlyName}..."
     try {
         $installed = winget list --id $PackageId --exact -q
         if ($installed) {
-            Write-Host "$FriendlyName is already installed."
+            Write-Host "${FriendlyName} is already installed."
         } else {
-            Write-Host "Installing $FriendlyName..."
+            Write-Host "Installing ${FriendlyName}..."
             winget install --id $PackageId --exact --accept-package-agreements --accept-source-agreements -q
             if ($LASTEXITCODE -eq 0) {
-                Write-Host "$FriendlyName installed successfully."
+                Write-Host "${FriendlyName} installed successfully."
             } else {
-                Write-Warning "Failed to install $FriendlyName. Winget exit code: $LASTEXITCODE"
+                Write-Warning "Failed to install ${FriendlyName}. Winget exit code: ${LASTEXITCODE}"
             }
         }
     } catch {
@@ -121,23 +76,29 @@ if (Test-WingetInstallation) {
     Install-Software -PackageId "Git.Git" -FriendlyName "Git"
     Install-Software -PackageId "OpenJS.NodeJS" -FriendlyName "Node.js" # This should include npm
     Install-Software -PackageId "ClamAV.ClamAV" -FriendlyName "ClamAV" # Assuming a winget package ID
-    Install-Software -PackageId "Malwarebytes.Malwarebytes" -FriendlyName "Malwarebytes" # Assuming a winget package ID
+    # Malwarebytes is skipped as it requires a business version for command-line scanning
 } else {
     Write-Warning "Skipping software installation as Winget is not available."
 }
 
 $RawDataPath = Join-Path -Path (Split-Path -Path $PSScriptRoot -Parent) -ChildPath "results"
 
+# --- 1. Setup ---
+if (-not (Test-Path $RawDataPath)) {
+    New-Item -Path $RawDataPath -ItemType Directory | Out-Null
+    Write-Host "Created results directory: $RawDataPath"
+}
+
 if ($session) {
     # Remote Execution
-    Write-Host "--- Gather_Info.ps1: Starting remote data collection on $ComputerName ---"
+    Write-Host "--- Gather_Info.ps1: Starting remote data collection on ${ComputerName} ---"
     Invoke-Command -Session $session -ScriptBlock {
         param($RemoteRawDataPath)
 
         # Ensure results directory exists on remote machine
         if (-not (Test-Path $RemoteRawDataPath)) {
             New-Item -Path $RemoteRawDataPath -ItemType Directory | Out-Null
-            Write-Host "Created remote results directory: $RemoteRawDataPath"
+            Write-Host "Created remote results directory: ${RemoteRawDataPath}"
         }
 
         # II. Persistent System Artifacts: Registry (Persistence & Execution Evidence)
@@ -160,7 +121,7 @@ if ($session) {
             ConvertTo-Json -Depth 3 | Out-File (Join-Path $RemoteRawDataPath "processes_snapshot.json") -Encoding UTF8
 
         # I. Volatile Data: Network Connections (Network Evidence)
-        Write-Host "Collecting Network Connection State (Network) on remote machine..."
+        Write-Host "Collecting Network Connection State (Network)..."
         Get-NetTCPConnection |
             Select-Object LocalAddress, LocalPort, RemoteAddress, RemotePort, State, OwningProcess |
             ConvertTo-Json -Depth 3 | Out-File (Join-Path $RemoteRawDataPath "netstat_snapshot.json") -Encoding UTF8
@@ -185,8 +146,8 @@ if ($session) {
         if ($ClamAVPath) {
             $ClamAVLogPath = Join-Path -Path $RemoteRawDataPath -ChildPath "clamav_scan_results.txt"
             try {
-                & "$ClamAVPath" -r "C:\" | Out-File $ClamAVLogPath -Encoding UTF8
-                Write-Host "ClamAV scan complete on remote machine. Results saved to $ClamAVLogPath"
+                & "${ClamAVPath}" -r "C:\" | Out-File $ClamAVLogPath -Encoding UTF8
+                Write-Host "ClamAV scan complete on remote machine. Results saved to ${ClamAVLogPath}"
             } catch {
                 Write-Warning "ClamAV scan failed on remote machine: ${PSItem}"
             }
@@ -194,15 +155,13 @@ if ($session) {
             Write-Warning "ClamAV (clamscan.exe) not found on remote machine. Skipping scan."
         }
 
-                # Windows Defender Scan
+        # Windows Defender Scan
         Write-Host "Starting Windows Defender Full Scan on remote machine..."
         $DefenderLogPath = Join-Path -Path $RemoteRawDataPath -ChildPath "defender_scan_results.txt"
         try {
-            # Start-MpScan is a cmdlet from the Defender module
-            # It might not output directly to stdout, so we'll capture its object output and format it.
             $scanResult = Start-MpScan -ScanType FullScan -ErrorAction Stop
             $scanResult | Out-File $DefenderLogPath -Encoding UTF8
-            Write-Host "Windows Defender scan complete on remote machine. Results saved to $DefenderLogPath"
+            Write-Host "Windows Defender scan complete on remote machine. Results saved to ${DefenderLogPath}"
         } catch {
             Write-Warning "Windows Defender scan failed on remote machine: ${PSItem}"
             "Windows Defender scan failed on remote machine: ${PSItem}" | Out-File $DefenderLogPath -Encoding UTF8
@@ -229,10 +188,6 @@ if ($session) {
 } else {
     # Local Execution
     Write-Host "--- Gather_Info.ps1: Starting local data collection ---"
-    if (-not (Test-Path $RawDataPath)) {
-        New-Item -Path $RawDataPath -ItemType Directory | Out-Null
-        Write-Host "Created results directory: $RawDataPath"
-    }
 
     # II. Persistent System Artifacts: Registry (Persistence & Execution Evidence)
     Write-Host "Collecting Registry Run Keys (Persistence)..."
@@ -279,8 +234,8 @@ if ($session) {
     if ($ClamAVPath) {
         $ClamAVLogPath = Join-Path -Path $RawDataPath -ChildPath "clamav_scan_results.txt"
         try {
-            & "$ClamAVPath" -r "C:\" | Out-File $ClamAVLogPath -Encoding UTF8
-            Write-Host "ClamAV scan complete. Results saved to $ClamAVLogPath"
+            & "${ClamAVPath}" -r "C:\" | Out-File $ClamAVLogPath -Encoding UTF8
+            Write-Host "ClamAV scan complete. Results saved to ${ClamAVLogPath}"
         } catch {
             Write-Warning "ClamAV scan failed: ${PSItem}"
         }
@@ -292,11 +247,9 @@ if ($session) {
     Write-Host "Starting Windows Defender Full Scan..."
     $DefenderLogPath = Join-Path -Path $RawDataPath -ChildPath "defender_scan_results.txt"
     try {
-        # Start-MpScan is a cmdlet from the Defender module
-        # It might not output directly to stdout, so we'll capture its object output and format it.
         $scanResult = Start-MpScan -ScanType FullScan -ErrorAction Stop
         $scanResult | Out-File $DefenderLogPath -Encoding UTF8
-        Write-Host "Windows Defender scan complete. Results saved to $DefenderLogPath"
+        Write-Host "Windows Defender scan complete. Results saved to ${DefenderLogPath}"
     } catch {
         Write-Warning "Windows Defender scan failed: ${PSItem}"
         "Windows Defender scan failed: ${PSItem}" | Out-File $DefenderLogPath -Encoding UTF8
