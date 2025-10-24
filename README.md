@@ -159,27 +159,7 @@ The AI analyzes various categories for suspicious indicators:
 | **PowerShell Activity** | PowerShell Operational Logs | Identify obfuscated commands, base64 encoding, and suspicious cmdlets (e.g., `Invoke-Expression`, `DownloadString`). |
 | **File System** | MACE Timestamps | Look for timestomping indicators (e.g., creation time after last write time) on executables. |
 
-### Forensic Artifacts Collected
 
-**Currently Implemented:**
-- ✅ **Running Processes** - All active processes with paths and command lines.
-- ✅ **Network Connections** - TCP connections with owning processes.
-- ✅ **Registry Run Keys** - Persistence mechanisms (HKCU/HKLM).
-- ✅ **Scheduled Tasks** - Comprehensive details of all scheduled tasks.
-- ✅ **Windows Services** - Configuration and state of all installed services.
-- ✅ **WMI Event Subscriptions** - Details of WMI event filters, consumers, and bindings.
-- ✅ **Security Event Logs** - Logon events (4624), Admin privileges (4672), Process Creation (4688), Service Install (4697), User Creation (4720), Object Access (4663).
-- ✅ **PowerShell Operational Logs** - Script Block Logging and other PowerShell activity.
-- ✅ **Browser History & Downloads** - Database files from Chrome, Edge, and Firefox.
-- ✅ **MACE Timestamps** - Creation, Access, Write, and Entry Modified timestamps for executables referenced in persistence mechanisms and running processes.
-- ✅ **Antivirus Scans** - ClamAV and Windows Defender results.
-
-**Planned for Future:**
-- Full memory (RAM) image
-- Full disk image
-- Prefetch files, Jump Lists, LNK files, ShellBags
-- Credential Manager data
-- Group Policy snapshots
 
 ---
 
