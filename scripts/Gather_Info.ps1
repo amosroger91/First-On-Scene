@@ -12,6 +12,52 @@ if (-not ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdenti
     Write-Warning "This script requires administrator privileges to collect all artifacts. Please run as an administrator."
 }
 
+# --- Winget and Software Installation Check ---
+function Test-WingetInstallation {
+    if (-not (Get-Command winget.exe -ErrorAction SilentlyContinue)) {
+        Write-Warning "Winget is not installed or not in PATH. Please install Winget from the Microsoft Store or https://github.com/microsoft/winget-cli/releases"
+        return $false
+    }
+    return $true
+}
+
+function Install-Software {
+    param(
+        [Parameter(Mandatory=$true)]
+        [string]$PackageId,
+        [Parameter(Mandatory=$true)]
+        [string]$FriendlyName
+    )
+
+    Write-Host "Checking for $FriendlyName..."
+    try {
+        $installed = winget list --id $PackageId --exact -q
+        if ($installed) {
+            Write-Host "$FriendlyName is already installed."
+        } else {
+            Write-Host "Installing $FriendlyName..."
+            winget install --id $PackageId --exact --accept-package-agreements --accept-source-agreements -q
+            if ($LASTEXITCODE -eq 0) {
+                Write-Host "$FriendlyName installed successfully."
+            } else {
+                Write-Warning "Failed to install $FriendlyName. Winget exit code: $LASTEXITCODE"
+            }
+        }
+    } catch {
+        Write-Warning "Error checking/installing $FriendlyName: $_"
+    }
+}
+
+if (Test-WingetInstallation) {
+    Write-Host "Winget is installed. Checking for required software..."
+    Install-Software -PackageId "Git.Git" -FriendlyName "Git"
+    Install-Software -PackageId "OpenJS.NodeJS" -FriendlyName "Node.js" # This should include npm
+    Install-Software -PackageId "ClamAV.ClamAV" -FriendlyName "ClamAV" # Assuming a winget package ID
+    Install-Software -PackageId "Malwarebytes.Malwarebytes" -FriendlyName "Malwarebytes" # Assuming a winget package ID
+} else {
+    Write-Warning "Skipping software installation as Winget is not available."
+}
+
 $RawDataPath = Join-Path -Path $PSScriptRoot -ChildPath "results"
 
 # --- 1. Setup ---
