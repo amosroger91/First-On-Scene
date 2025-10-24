@@ -227,8 +227,19 @@ if ($session) {
             Write-Warning "ClamAV (clamscan.exe) not found on remote machine. Skipping scan."
         }
 
-        # Malwarebytes Scan (Placeholder - requires business version for command-line scanning)
-        Write-Host "Malwarebytes scan skipped on remote machine (requires business version for command-line scanning with output)."
+                # Windows Defender Scan
+        Write-Host "Starting Windows Defender Full Scan on remote machine..."
+        $DefenderLogPath = Join-Path -Path $RemoteRawDataPath -ChildPath "defender_scan_results.txt"
+        try {
+            # Start-MpScan is a cmdlet from the Defender module
+            # It might not output directly to stdout, so we'll capture its object output and format it.
+            $scanResult = Start-MpScan -ScanType FullScan -ErrorAction Stop
+            $scanResult | Out-File $DefenderLogPath -Encoding UTF8
+            Write-Host "Windows Defender scan complete on remote machine. Results saved to $DefenderLogPath"
+        } catch {
+            Write-Warning "Windows Defender scan failed on remote machine: ${PSItem}"
+            "Windows Defender scan failed on remote machine: ${PSItem}" | Out-File $DefenderLogPath -Encoding UTF8
+        }
 
         Write-Host "--- Gather_Info.ps1: Remote Collection Complete ---"
 
@@ -310,8 +321,19 @@ if ($session) {
         Write-Warning "ClamAV (clamscan.exe) not found. Skipping scan."
     }
 
-    # Malwarebytes Scan (Placeholder - requires business version for command-line scanning)
-    Write-Host "Malwarebytes scan skipped (requires business version for command-line scanning with output)."
+    # Windows Defender Scan
+    Write-Host "Starting Windows Defender Full Scan..."
+    $DefenderLogPath = Join-Path -Path $RawDataPath -ChildPath "defender_scan_results.txt"
+    try {
+        # Start-MpScan is a cmdlet from the Defender module
+        # It might not output directly to stdout, so we'll capture its object output and format it.
+        $scanResult = Start-MpScan -ScanType FullScan -ErrorAction Stop
+        $scanResult | Out-File $DefenderLogPath -Encoding UTF8
+        Write-Host "Windows Defender scan complete. Results saved to $DefenderLogPath"
+    } catch {
+        Write-Warning "Windows Defender scan failed: ${PSItem}"
+        "Windows Defender scan failed: ${PSItem}" | Out-File $DefenderLogPath -Encoding UTF8
+    }
 
     Write-Host "--- Gather_Info.ps1: Local Collection Complete ---"
 }
