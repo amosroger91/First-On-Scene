@@ -27,6 +27,24 @@ $d=(Join-Path $env:TEMP "FOS_Run"); New-Item -ItemType Directory -Path $d -Force
 $d=(Join-Path $env:TEMP "FOS_Run"); New-Item -ItemType Directory -Path $d -Force | Out-Null; Invoke-WebRequest "https://github.com/amosroger91/First-On-Scene/archive/refs/heads/main.zip" -OutFile "$d\m.zip" -UseBasicParsing; Expand-Archive -Path "$d\m.zip" -DestinationPath $d -Force; & "$d\First-On-Scene-main\scripts\win\Gather_Info.ps1" -EnableDefender -RunRkill
 ```
 
+### 🆕 Time-Ranged Collection (Targeted Investigation)
+Collect only data within a specific time window - perfect for investigating known incident timeframes.
+
+**Last 24 hours:**
+```powershell
+$start = (Get-Date).AddHours(-24); $d=(Join-Path $env:TEMP "FOS_Run"); New-Item -ItemType Directory -Path $d -Force | Out-Null; iwr "https://github.com/amosroger91/First-On-Scene/archive/refs/heads/main.zip" -OutFile "$d\m.zip" -UseBasicParsing; Expand-Archive -Path "$d\m.zip" -DestinationPath $d -Force; & "$d\First-On-Scene-main\scripts\win\Gather_Info.ps1" -StartTime $start
+```
+
+**Specific date/time range:**
+```powershell
+$start = Get-Date "2025-01-15 08:00:00"; $end = Get-Date "2025-01-15 17:00:00"; $d=(Join-Path $env:TEMP "FOS_Run"); New-Item -ItemType Directory -Path $d -Force | Out-Null; iwr "https://github.com/amosroger91/First-On-Scene/archive/refs/heads/main.zip" -OutFile "$d\m.zip" -UseBasicParsing; Expand-Archive -Path "$d\m.zip" -DestinationPath $d -Force; & "$d\First-On-Scene-main\scripts\win\Gather_Info.ps1" -StartTime $start -EndTime $end
+```
+
+**Last 7 days on remote computer:**
+```powershell
+$start = (Get-Date).AddDays(-7); $d=(Join-Path $env:TEMP "FOS_Run"); New-Item -ItemType Directory -Path $d -Force | Out-Null; iwr "https://github.com/amosroger91/First-On-Scene/archive/refs/heads/main.zip" -OutFile "$d\m.zip" -UseBasicParsing; Expand-Archive -Path "$d\m.zip" -DestinationPath $d -Force; & "$d\First-On-Scene-main\scripts\win\Gather_Info.ps1" -ComputerName "KS-BENCH01" -StartTime $start
+```
+
 ---
 
 ## Linux (Bash)

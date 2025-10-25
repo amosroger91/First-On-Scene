@@ -48,7 +48,12 @@ $d=(Join-Path $env:TEMP "FOS_Run"); New-Item -ItemType Directory -Path $d -Force
 cd /tmp && curl -L https://github.com/amosroger91/First-On-Scene/archive/refs/heads/main.tar.gz | tar -xz && cd First-On-Scene-main && chmod +x scripts/nix/gather_info.sh && ./scripts/nix/gather_info.sh
 ```
 
-**💡 Tip**: See [ONE_LINERS.md](ONE_LINERS.md) for platform-specific commands, branding options, and advanced usage.
+**🆕 Time-ranged collection (last 24 hours):**
+```powershell
+$start = (Get-Date).AddHours(-24); $d=(Join-Path $env:TEMP "FOS_Run"); New-Item -ItemType Directory -Path $d -Force | Out-Null; iwr "https://github.com/amosroger91/First-On-Scene/archive/refs/heads/main.zip" -OutFile "$d\m.zip" -UseBasicParsing; Expand-Archive -Path "$d\m.zip" -DestinationPath $d -Force; & "$d\First-On-Scene-main\scripts\win\Gather_Info.ps1" -StartTime $start
+```
+
+**💡 Tip**: See [ONE_LINERS.md](ONE_LINERS.md) for platform-specific commands, time range examples, branding options, and advanced usage.
 
 **What happens automatically:**
 1. ✅ Collects volatile and persistent forensic artifacts.
@@ -154,7 +159,61 @@ All analysis results are saved to the `results/` directory, including:
 
 ## 🔧 Advanced Options
 
-See the `ONE_LINERS.md` file and the scripts themselves for advanced command-line parameters.
+### Command-Line Parameters
+
+**`Gather_Info.ps1` accepts the following parameters:**
+
+```powershell
+.\scripts\Gather_Info.ps1 `
+    -ComputerName "RemotePC" `
+    -Credential (Get-Credential) `
+    -StartTime "2025-01-15 08:00:00" `
+    -EndTime "2025-01-15 17:00:00" `
+    -CustomProblemScript "C:\MyScripts\SendAlert.ps1" `
+    -CustomAllClearScript "C:\MyScripts\ClearAlert.ps1" `
+    -BrandName "Acme Security" `
+    -LogoPath "C:\MyLogo.png" `
+    -RunRkill `
+    -EnableDefender `
+    -CaptureMemory
+```
+
+| Parameter | Description | Default |
+| :--- | :--- | :--- |
+| `-ComputerName` | Target computer name for analysis | `"localhost"` (local execution) |
+| `-Credential` | Credentials for remote execution | Current user credentials |
+| `-StartTime` | **🆕 Start time for time-ranged collection** (e.g., `"2025-01-15 08:00:00"` or `(Get-Date).AddHours(-24)`) | None (collects all available data) |
+| `-EndTime` | **🆕 End time for time-ranged collection** (e.g., `"2025-01-15 17:00:00"`) | None (collects up to current time) |
+| `-CustomProblemScript` | Path to custom PowerShell script for problem detection | Uses default `Problem_Detected.ps1` |
+| `-CustomAllClearScript` | Path to custom PowerShell script for all clear | Uses default `All_Clear.ps1` |
+| `-BrandName` | Custom brand name for reports | `"First-On-Scene"` |
+| `-LogoPath` | Path to custom logo image for reports | None |
+| `-RunRkill` | **⚠️ Execute rkill.exe to terminate malware processes (MODIFIES SYSTEM STATE)** | `$false` (SKIPPED for evidence integrity) |
+| `-EnableDefender` | **⚠️ Auto-enable Windows Defender if stopped (MAY ALERT MALWARE)** | `$false` (SKIPPED for stealth) |
+| `-CaptureMemory` | **⚠️ Capture full RAM image via WinPmem (VERY LARGE FILE - size of installed RAM)** | `$false` (SKIPPED to save time/disk space) |
+
+**Example with custom branding:**
+```powershell
+.\scripts\Gather_Info.ps1 -BrandName "YourCompany Security Response" -LogoPath "C:\logo.png"
+```
+
+**🆕 Example with time-ranged collection (targeted investigation):**
+```powershell
+# Investigate last 24 hours
+.\scripts\Gather_Info.ps1 -StartTime (Get-Date).AddHours(-24)
+
+# Investigate specific date/time range
+.\scripts\Gather_Info.ps1 -StartTime "2025-01-15 08:00:00" -EndTime "2025-01-15 17:00:00"
+
+# Combine with remote computer
+.\scripts\Gather_Info.ps1 -ComputerName "KS-BENCH01" -StartTime (Get-Date).AddDays(-7)
+```
+
+**Why use time ranges?**
+- 🎯 **Targeted investigation**: Focus on known incident timeframes without noise from unrelated events
+- 📊 **Reduce data volume**: Collect only relevant event logs for faster analysis
+- 🕒 **Scope compliance**: Comply with investigation scope requirements for specific time windows
+- 🔍 **Correlate events**: Analyze all activity within specific operational windows (e.g., business hours)
 
 ---
 
