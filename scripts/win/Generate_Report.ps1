@@ -156,7 +156,7 @@ $ExecutiveSummaryPrompt | Out-File -FilePath $tempSummaryFile -Encoding UTF8 -No
 Write-Host "  -> Generating Executive Summary..." -ForegroundColor Gray
 $ExecSummary = ""
 try {
-    $ExecSummary = cmd /c "type `"$tempSummaryFile`" | npx --yes @qwen-code/qwen-code -p `"`"" 2>&1
+    $ExecSummary = cmd /c "type `"$tempSummaryFile`" | npx --yes @qwen-code/qwen-code --yolo -p `"`"" 2>&1
     $ExecSummary = $ExecSummary -replace '[\r\n]+$', ''  # Trim trailing newlines
     if ($ExecSummary -match "Error|Exception|Failed") {
         throw "LLM returned error: $ExecSummary"
@@ -173,7 +173,7 @@ $RecommendationsPrompt | Out-File -FilePath $tempRecommendationsFile -Encoding U
 Write-Host "  -> Generating Recommendations..." -ForegroundColor Gray
 $Recommendations = ""
 try {
-    $Recommendations = cmd /c "type `"$tempRecommendationsFile`" | npx --yes @qwen-code/qwen-code -p `"`"" 2>&1
+    $Recommendations = cmd /c "type `"$tempRecommendationsFile`" | npx --yes @qwen-code/qwen-code --yolo -p `"`"" 2>&1
     $Recommendations = $Recommendations -replace '[\r\n]+$', ''
     if ($Recommendations -match "Error|Exception|Failed") {
         throw "LLM returned error: $Recommendations"

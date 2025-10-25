@@ -12,14 +12,14 @@ Data collection is performed in "Evidence Integrity Mode" by default, which mean
 ---
 
 ### Tools
-* **scripts/Gather_Info.ps1:** Executes data collection on the target system. Supports optional `-RunRkill` and `-EnableDefender` flags to modify system state (NOT recommended for forensic investigations).
-* **scripts/Parse_Results.ps1:** Processes raw data into the structured file `results/Info_Results.txt`.
-* **scripts/Problem_Detected.ps1 [REASON_CODE]:** Call if a problem is confirmed. **MUST be passed a single, capitalized, concise summary as an argument (e.g., "RANSOMWARE_ENCRYPTED_FILES").**
+* **scripts/win/Gather_Info.ps1:** Executes data collection on the target system. Supports optional `-RunRkill` and `-EnableDefender` flags to modify system state (NOT recommended for forensic investigations).
+* **scripts/win/Parse_Results.ps1:** Processes raw data into the structured file `results/Info_Results.txt`.
+* **scripts/win/Problem_Detected.ps1 [REASON_CODE]:** Call if a problem is confirmed. **MUST be passed a single, capitalized, concise summary as an argument (e.g., "RANSOMWARE_ENCRYPTED_FILES").**
   - **IMPORTANT**: Check `results/config.json` first. If `CustomProblemScript` is configured, pass it using the `-CustomActionScript` parameter:
-    `powershell.exe -ExecutionPolicy Bypass -File "scripts/Problem_Detected.ps1" -REASON_CODE "YOUR_REASON" -CustomActionScript "path/from/config.json"`
-* **scripts/All_Clear.ps1:** The standard script to be called if no issue is detected (No argument required).
+    `powershell.exe -ExecutionPolicy Bypass -File "scripts/win/Problem_Detected.ps1" -REASON_CODE "YOUR_REASON" -CustomActionScript "path/from/config.json"`
+* **scripts/win/All_Clear.ps1:** The standard script to be called if no issue is detected (No argument required).
   - **IMPORTANT**: Check `results/config.json` first. If `CustomAllClearScript` is configured, pass it using the `-CustomActionScript` parameter:
-    `powershell.exe -ExecutionPolicy Bypass -File "scripts/All_Clear.ps1" -CustomActionScript "path/from/config.json"`
+    `powershell.exe -ExecutionPolicy Bypass -File "scripts/win/All_Clear.ps1" -CustomActionScript "path/from/config.json"`
 
 ---
 
