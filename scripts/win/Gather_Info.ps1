@@ -36,6 +36,16 @@
     several minutes to capture. This will consume significant disk space. Only use this flag if you
     need full memory forensics for malware analysis, rootkit detection, or credential extraction.
     Default: $false (memory will NOT be captured unless explicitly requested)
+.PARAMETER StartTime
+    Optional start time for time-ranged data collection (event logs, timestamps, etc.).
+    Format: DateTime object or string parseable by PowerShell (e.g., "2025-01-01 08:00:00").
+    If not specified, collects all available data.
+    Example: -StartTime "2025-01-15 00:00:00"
+.PARAMETER EndTime
+    Optional end time for time-ranged data collection (event logs, timestamps, etc.).
+    Format: DateTime object or string parseable by PowerShell (e.g., "2025-01-02 17:00:00").
+    If not specified, collects up to the current time.
+    Example: -EndTime "2025-01-15 23:59:59"
 .EXAMPLE
     .\Gather_Info.ps1
     Run local forensic collection with default settings (no rkill, no Defender enabling).
@@ -51,6 +61,9 @@
 .EXAMPLE
     .\Gather_Info.ps1 -CaptureMemory
     Run with full memory capture for advanced forensics (WARNING: creates large dump file).
+.EXAMPLE
+    .\Gather_Info.ps1 -StartTime "2025-01-15 08:00:00" -EndTime "2025-01-15 17:00:00"
+    Run with time-ranged collection for targeted incident investigation (only collects data within specified window).
 #>
 param(
     [Parameter(Mandatory=$false)]
@@ -78,7 +91,13 @@ param(
     [switch]$EnableDefender = $false,
 
     [Parameter(Mandatory=$false)]
-    [switch]$CaptureMemory = $false
+    [switch]$CaptureMemory = $false,
+
+    [Parameter(Mandatory=$false)]
+    [DateTime]$StartTime,
+
+    [Parameter(Mandatory=$false)]
+    [DateTime]$EndTime
 )
 
 # Check for administrator privileges
@@ -276,9 +295,17 @@ $Config = @{
     CustomProblemScript = if ($CustomProblemScript) { $CustomProblemScript } else { $null }
     CustomAllClearScript = if ($CustomAllClearScript) { $CustomAllClearScript } else { $null }
     Timestamp = (Get-Date).ToString("yyyy-MM-dd HH:mm:ss")
+    TimeRange = @{
+        StartTime = if ($StartTime) { $StartTime.ToString("yyyy-MM-dd HH:mm:ss") } else { $null }
+        EndTime = if ($EndTime) { $EndTime.ToString("yyyy-MM-dd HH:mm:ss") } else { $null }
+        Enabled = ($StartTime -ne $null -or $EndTime -ne $null)
+    }
 }
 $Config | ConvertTo-Json -Depth 3 | Out-File $ConfigPath -Encoding UTF8
 Write-Host "Configuration saved to $ConfigPath"
+if ($StartTime -or $EndTime) {
+    Write-Host "Time Range Filter: $(if ($StartTime) { $StartTime.ToString('yyyy-MM-dd HH:mm:ss') } else { '(start)' }) to $(if ($EndTime) { $EndTime.ToString('yyyy-MM-dd HH:mm:ss') } else { '(now)' })" -ForegroundColor Cyan
+}
 
 if ($session) {
     # Remote Execution
@@ -493,7 +520,16 @@ if ($session) {
         try {
             # Event IDs: 4624 (Logon), 4672 (Admin), 4688 (Process Creation),
             #            4697 (Service Install), 4720 (User Creation), 4663 (Object Access)
-            Get-WinEvent -LogName 'Security' -FilterXPath "*[System[(EventID=4624 or EventID=4672 or EventID=4688 or EventID=4697 or EventID=4720 or EventID=4663)]]" -MaxEvents 1000 |
+
+            # Build filter hashtable with time range if specified
+            $securityFilter = @{
+                LogName = 'Security'
+                ID = 4624,4672,4688,4697,4720,4663
+            }
+            if ($using:StartTime) { $securityFilter['StartTime'] = $using:StartTime }
+            if ($using:EndTime) { $securityFilter['EndTime'] = $using:EndTime }
+
+            Get-WinEvent -FilterHashtable $securityFilter -MaxEvents 1000 -ErrorAction Stop |
                 Select-Object TimeCreated, Id, Message,
                     @{Name='ProcessName';Expression={$_.Properties[5].Value}},
                     @{Name='ProcessCommandLine';Expression={$_.Properties[8].Value}} |
@@ -507,7 +543,14 @@ if ($session) {
         # PowerShell Operational Logs (Script Block Logging)
         Write-Host "Collecting PowerShell Operational Logs on remote machine..."
         try {
-            Get-WinEvent -LogName 'Microsoft-Windows-PowerShell/Operational' -MaxEvents 500 |
+            # Build filter hashtable with time range if specified
+            $powershellFilter = @{
+                LogName = 'Microsoft-Windows-PowerShell/Operational'
+            }
+            if ($using:StartTime) { $powershellFilter['StartTime'] = $using:StartTime }
+            if ($using:EndTime) { $powershellFilter['EndTime'] = $using:EndTime }
+
+            Get-WinEvent -FilterHashtable $powershellFilter -MaxEvents 500 -ErrorAction Stop |
                 Select-Object TimeCreated, Id, Message, LevelDisplayName |
                 ConvertTo-Json -Depth 3 | Out-File (Join-Path $RemoteRawDataPath "powershell_logs.json") -Encoding UTF8
         }
@@ -1065,7 +1108,16 @@ if ($session) {
     try {
         # Event IDs: 4624 (Logon), 4672 (Admin), 4688 (Process Creation),
         #            4697 (Service Install), 4720 (User Creation), 4663 (Object Access)
-        Get-WinEvent -LogName 'Security' -FilterXPath "*[System[(EventID=4624 or EventID=4672 or EventID=4688 or EventID=4697 or EventID=4720 or EventID=4663)]]" -MaxEvents 1000 |
+
+        # Build filter hashtable with time range if specified
+        $securityFilter = @{
+            LogName = 'Security'
+            ID = 4624,4672,4688,4697,4720,4663
+        }
+        if ($StartTime) { $securityFilter['StartTime'] = $StartTime }
+        if ($EndTime) { $securityFilter['EndTime'] = $EndTime }
+
+        Get-WinEvent -FilterHashtable $securityFilter -MaxEvents 1000 -ErrorAction Stop |
             Select-Object TimeCreated, Id, Message,
                 @{Name='ProcessName';Expression={$_.Properties[5].Value}},
                 @{Name='ProcessCommandLine';Expression={$_.Properties[8].Value}} |
@@ -1079,7 +1131,14 @@ if ($session) {
     # PowerShell Operational Logs (Script Block Logging)
     Write-Host "Collecting PowerShell Operational Logs..."
     try {
-        Get-WinEvent -LogName 'Microsoft-Windows-PowerShell/Operational' -MaxEvents 500 |
+        # Build filter hashtable with time range if specified
+        $powershellFilter = @{
+            LogName = 'Microsoft-Windows-PowerShell/Operational'
+        }
+        if ($StartTime) { $powershellFilter['StartTime'] = $StartTime }
+        if ($EndTime) { $powershellFilter['EndTime'] = $EndTime }
+
+        Get-WinEvent -FilterHashtable $powershellFilter -MaxEvents 500 -ErrorAction Stop |
             Select-Object TimeCreated, Id, Message, LevelDisplayName |
             ConvertTo-Json -Depth 3 | Out-File (Join-Path $RawDataPath "powershell_logs.json") -Encoding UTF8
     }
