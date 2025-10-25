@@ -48,13 +48,18 @@ cd First-On-Scene
 ```
 
 **What happens automatically:**
-1. ✅ Runs `rkill.exe` to stop active malware processes
-2. ✅ Collects forensic artifacts (processes, registry, network, event logs, antivirus scans)
+1. ✅ Collects volatile forensic artifacts (network connections, processes, open files)
+2. ✅ Collects persistent forensic artifacts (registry, scheduled tasks, services, event logs)
 3. ✅ Parses and structures the data
 4. ✅ Launches AI triage using OpenRouter's free tier
 5. ✅ Generates detailed findings report (`results/findings.txt`)
 6. ✅ Makes final decision: **Problem Detected** or **All Clear**
 7. ✅ Executes custom action scripts for automation (optional)
+
+**⚠️ Evidence Integrity Mode (Default):**
+- Rkill execution **SKIPPED** (preserves volatile evidence)
+- Defender auto-enable **SKIPPED** (preserves stealth)
+- Use `-RunRkill` and `-EnableDefender` flags to enable these (modifies system state)
 
 ---
 
@@ -206,20 +211,21 @@ The AI analyzes data across multiple categories:
 ### Forensic Artifacts Collected
 
 **Currently Implemented:**
-- ✅ Registry Run/RunOnce keys (HKCU/HKLM)
-- ✅ Scheduled Tasks (all tasks with paths, authors, states, arguments)
-- ✅ Windows Services (configuration, start modes, executable paths)
-- ✅ WMI Event Subscriptions (Event Filters, Consumers, Bindings)
-- ✅ Running Processes (with paths, command lines, parent-child relationships)
-- ✅ Network TCP Connections (with owning processes)
-- ✅ Security Event Logs (Logon, Admin, Process Creation, Service Install, User Creation, Object Access)
-- ✅ PowerShell Operational Logs (Script Block Logging)
-- ✅ Browser History Databases (Chrome, Edge, Firefox)
-- ✅ MACE Timestamps (Modified, Accessed, Created, Entry metadata)
-- ✅ Antivirus Scans:
-  - ClamAV full system scan
-  - Windows Defender full scan (auto-enables if disabled, then restores state)
-  - Rkill execution (neutralizes active malware before collection)
+- ✅ Network TCP Connections (with owning processes) - **Volatile**
+- ✅ Running Processes (with paths, command lines, parent-child relationships) - **Volatile**
+- ✅ Open Files and Handles (open files, SMB sessions, mapped drives) - **Volatile** ⭐ NEW
+- ✅ Registry Run/RunOnce keys (HKCU/HKLM) - **Volatile**
+- ✅ Scheduled Tasks (all tasks with paths, authors, states, arguments) - **Persistent**
+- ✅ Windows Services (configuration, start modes, executable paths) - **Persistent**
+- ✅ WMI Event Subscriptions (Event Filters, Consumers, Bindings) - **Persistent**
+- ✅ Security Event Logs (Logon, Admin, Process Creation, Service Install, User Creation, Object Access) - **Persistent**
+- ✅ PowerShell Operational Logs (Script Block Logging) - **Persistent**
+- ✅ Browser History Databases (Chrome, Edge, Firefox) - **Persistent**
+- ✅ MACE Timestamps (Modified, Accessed, Created, Entry metadata) - **Persistent**
+- ✅ Antivirus Scans (Optional - use `-RunRkill` and `-EnableDefender` flags):
+  - ClamAV full system scan (if available)
+  - Windows Defender full scan (only if running OR if `-EnableDefender` flag used)
+  - Rkill execution (ONLY if `-RunRkill` flag used - modifies system state!)
 
 **Planned for Future:**
 - Full memory (RAM) image
@@ -396,7 +402,9 @@ We are **considering expanding to Linux (Bash)** in future releases. Linux suppo
     -CustomProblemScript "C:\MyScripts\SendAlert.ps1" `
     -CustomAllClearScript "C:\MyScripts\ClearAlert.ps1" `
     -BrandName "Acme Security" `
-    -LogoPath "C:\MyLogo.png"
+    -LogoPath "C:\MyLogo.png" `
+    -RunRkill `
+    -EnableDefender
 ```
 
 | Parameter | Description | Default |
@@ -407,6 +415,8 @@ We are **considering expanding to Linux (Bash)** in future releases. Linux suppo
 | `-CustomAllClearScript` | Path to custom PowerShell script for all clear | Uses default `All_Clear.ps1` |
 | `-BrandName` | Custom brand name for reports | `"First-On-Scene"` |
 | `-LogoPath` | Path to custom logo image for reports | None |
+| `-RunRkill` | **⚠️ Execute rkill.exe to terminate malware processes (MODIFIES SYSTEM STATE)** | `$false` (SKIPPED for evidence integrity) |
+| `-EnableDefender` | **⚠️ Auto-enable Windows Defender if stopped (MAY ALERT MALWARE)** | `$false` (SKIPPED for stealth) |
 
 **Example with custom branding:**
 ```powershell
