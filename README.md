@@ -211,16 +211,22 @@ The AI analyzes data across multiple categories:
 ### Forensic Artifacts Collected
 
 **Currently Implemented:**
+- ✅ **Memory Capture** (Optional - use `-CaptureMemory` flag):
+  - Full RAM image via WinPmem - **MOST VOLATILE**
+  - WARNING: Creates very large file (size of installed RAM)
 - ✅ Network TCP Connections (with owning processes) - **Volatile**
 - ✅ Running Processes (with paths, command lines, parent-child relationships) - **Volatile**
-- ✅ Open Files and Handles (open files, SMB sessions, mapped drives) - **Volatile** ⭐ NEW
-- ✅ Registry Run/RunOnce keys (HKCU/HKLM) - **Volatile**
+- ✅ Open Files and Handles (open files, SMB sessions, mapped drives) - **Volatile**
+- ✅ Registry Run/RunOnce keys (HKCU/HKLM) - **Persistent**
 - ✅ Scheduled Tasks (all tasks with paths, authors, states, arguments) - **Persistent**
 - ✅ Windows Services (configuration, start modes, executable paths) - **Persistent**
 - ✅ WMI Event Subscriptions (Event Filters, Consumers, Bindings) - **Persistent**
 - ✅ Security Event Logs (Logon, Admin, Process Creation, Service Install, User Creation, Object Access) - **Persistent**
 - ✅ PowerShell Operational Logs (Script Block Logging) - **Persistent**
 - ✅ Browser History Databases (Chrome, Edge, Firefox) - **Persistent**
+- ✅ Prefetch Files (program execution history) - **Persistent**
+- ✅ Jump Lists (recent items accessed per user) - **Persistent**
+- ✅ LNK Files (shortcuts from Recent and Desktop folders) - **Persistent**
 - ✅ MACE Timestamps (Modified, Accessed, Created, Entry metadata) - **Persistent**
 - ✅ Antivirus Scans (Optional - use `-RunRkill` and `-EnableDefender` flags):
   - ClamAV full system scan (if available)
@@ -228,9 +234,7 @@ The AI analyzes data across multiple categories:
   - Rkill execution (ONLY if `-RunRkill` flag used - modifies system state!)
 
 **Planned for Future:**
-- Full memory (RAM) image
 - Full disk image
-- Prefetch files, Jump Lists, LNK files
 - USB device history
 - Credential Manager data
 - Group Policy snapshots
@@ -404,7 +408,8 @@ We are **considering expanding to Linux (Bash)** in future releases. Linux suppo
     -BrandName "Acme Security" `
     -LogoPath "C:\MyLogo.png" `
     -RunRkill `
-    -EnableDefender
+    -EnableDefender `
+    -CaptureMemory
 ```
 
 | Parameter | Description | Default |
@@ -417,6 +422,7 @@ We are **considering expanding to Linux (Bash)** in future releases. Linux suppo
 | `-LogoPath` | Path to custom logo image for reports | None |
 | `-RunRkill` | **⚠️ Execute rkill.exe to terminate malware processes (MODIFIES SYSTEM STATE)** | `$false` (SKIPPED for evidence integrity) |
 | `-EnableDefender` | **⚠️ Auto-enable Windows Defender if stopped (MAY ALERT MALWARE)** | `$false` (SKIPPED for stealth) |
+| `-CaptureMemory` | **⚠️ Capture full RAM image via WinPmem (VERY LARGE FILE - size of installed RAM)** | `$false` (SKIPPED to save time/disk space) |
 
 **Example with custom branding:**
 ```powershell

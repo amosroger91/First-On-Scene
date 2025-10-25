@@ -30,6 +30,12 @@
     WARNING: Enabling Defender may alert advanced malware to your presence and could trigger
     anti-forensics behavior (evidence destruction, lateral movement, C2 alerting).
     Default: $false (Defender will only be used if already running)
+.PARAMETER CaptureMemory
+    Optional switch to capture a full memory dump using WinPmem.
+    WARNING: Memory dumps are very large (typically RAM size, e.g., 8GB, 16GB, 32GB) and can take
+    several minutes to capture. This will consume significant disk space. Only use this flag if you
+    need full memory forensics for malware analysis, rootkit detection, or credential extraction.
+    Default: $false (memory will NOT be captured unless explicitly requested)
 .EXAMPLE
     .\Gather_Info.ps1
     Run local forensic collection with default settings (no rkill, no Defender enabling).
@@ -42,6 +48,9 @@
 .EXAMPLE
     .\Gather_Info.ps1 -RunRkill -EnableDefender
     Run with rkill execution and Defender auto-enable (WARNING: modifies system state).
+.EXAMPLE
+    .\Gather_Info.ps1 -CaptureMemory
+    Run with full memory capture for advanced forensics (WARNING: creates large dump file).
 #>
 param(
     [Parameter(Mandatory=$false)]
@@ -66,7 +75,10 @@ param(
     [switch]$RunRkill = $false,
 
     [Parameter(Mandatory=$false)]
-    [switch]$EnableDefender = $false
+    [switch]$EnableDefender = $false,
+
+    [Parameter(Mandatory=$false)]
+    [switch]$CaptureMemory = $false
 )
 
 # Check for administrator privileges
@@ -379,6 +391,52 @@ if ($session) {
             "@{EventFilters=@();EventConsumers=@();FilterBindings=@()}" | ConvertTo-Json | Out-File (Join-Path $RemoteRawDataPath "wmi_persistence.json") -Encoding UTF8
         }
 
+        # 0. MOST VOLATILE: Memory Capture (Optional - Large File)
+        if ($CaptureMemory) {
+            Write-Host "Capturing full memory dump on remote machine (this may take several minutes)..." -ForegroundColor Yellow
+            Write-Warning "Memory capture will create a file approximately the size of installed RAM!"
+
+            $WinPmemUrl = "https://github.com/Velocidex/WinPmem/releases/download/v4.0.rc1/winpmem_mini_x64_rc2.exe"
+            $WinPmemPath = Join-Path $RemoteRawDataPath "winpmem.exe"
+            $MemoryDumpPath = Join-Path $RemoteRawDataPath "memory.raw"
+
+            try {
+                # Download WinPmem
+                Write-Host "  Downloading WinPmem to remote machine..."
+                Invoke-WebRequest -Uri $WinPmemUrl -OutFile $WinPmemPath -UseBasicParsing -ErrorAction Stop
+
+                # Execute memory capture
+                Write-Host "  Executing memory capture (this will take time - progress may not be visible)..."
+                $captureStart = Get-Date
+                & $WinPmemPath $MemoryDumpPath -dd 2>&1 | Out-Null
+                $captureEnd = Get-Date
+                $captureDuration = ($captureEnd - $captureStart).TotalSeconds
+
+                if (Test-Path $MemoryDumpPath) {
+                    $memorySize = (Get-Item $MemoryDumpPath).Length
+                    $memorySizeMB = [math]::Round($memorySize / 1MB, 2)
+                    Write-Host "  Memory capture completed: $memorySizeMB MB in $([math]::Round($captureDuration, 2)) seconds" -ForegroundColor Green
+
+                    "$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss') :: Memory capture: $memorySizeMB MB captured in $([math]::Round($captureDuration, 2))s" |
+                        Out-File (Join-Path -Path $RemoteRawDataPath -ChildPath "Steps_Taken.txt") -Append -Encoding UTF8
+                } else {
+                    Write-Warning "Memory capture may have failed - dump file not found."
+                }
+
+                # Clean up WinPmem executable
+                Remove-Item $WinPmemPath -Force -ErrorAction SilentlyContinue
+            }
+            catch {
+                Write-Warning "Could not capture memory on remote machine: $_"
+                "$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss') :: Memory capture FAILED: $_" |
+                    Out-File (Join-Path -Path $RemoteRawDataPath -ChildPath "Steps_Taken.txt") -Append -Encoding UTF8
+            }
+        } else {
+            Write-Host "Memory capture SKIPPED (use -CaptureMemory flag to enable). Memory forensics not performed." -ForegroundColor Cyan
+            "$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss') :: Memory capture SKIPPED (preserving time and disk space)" |
+                Out-File (Join-Path -Path $RemoteRawDataPath -ChildPath "Steps_Taken.txt") -Append -Encoding UTF8
+        }
+
         # I. Volatile Data: Running Processes (Execution Evidence)
         Write-Host "Collecting Processes Snapshot (Execution) on remote machine..."
         Get-CimInstance -ClassName Win32_Process |
@@ -506,6 +564,87 @@ if ($session) {
 
         # Save manifest of collected browser artifacts
         $BrowserArtifacts | ConvertTo-Json -Depth 3 | Out-File (Join-Path $RemoteRawDataPath "browser_artifacts.json") -Encoding UTF8
+
+        # IV. Execution History Artifacts: Prefetch, Jump Lists, LNK Files
+
+        # Prefetch Files (Program Execution History)
+        Write-Host "Collecting Prefetch files (execution history) on remote machine..."
+        $PrefetchDest = Join-Path $RemoteRawDataPath "prefetch"
+        $PrefetchPath = "C:\Windows\Prefetch"
+
+        if (Test-Path $PrefetchPath) {
+            try {
+                New-Item -ItemType Directory -Path $PrefetchDest -Force | Out-Null
+                Copy-Item -Path "$PrefetchPath\*.pf" -Destination $PrefetchDest -Force -ErrorAction SilentlyContinue
+
+                $prefetchCount = (Get-ChildItem $PrefetchDest -Filter "*.pf" -ErrorAction SilentlyContinue).Count
+                Write-Host "  Collected $prefetchCount prefetch files"
+
+                "$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss') :: Prefetch collection: $prefetchCount files" |
+                    Out-File (Join-Path -Path $RemoteRawDataPath -ChildPath "Steps_Taken.txt") -Append -Encoding UTF8
+            } catch {
+                Write-Warning "Could not collect prefetch files on remote machine: $_"
+            }
+        } else {
+            Write-Warning "Prefetch directory not found on remote machine."
+        }
+
+        # Jump Lists (Recent Items Accessed)
+        Write-Host "Collecting Jump Lists (recent items) on remote machine..."
+        $JumpListDest = Join-Path $RemoteRawDataPath "jumplists"
+        New-Item -ItemType Directory -Path $JumpListDest -Force | Out-Null
+
+        $userProfiles = Get-ChildItem "C:\Users" -Directory -ErrorAction SilentlyContinue
+        $jumpListCount = 0
+        foreach ($profile in $userProfiles) {
+            $jumpListPath = Join-Path $profile.FullName "AppData\Roaming\Microsoft\Windows\Recent\AutomaticDestinations"
+
+            if (Test-Path $jumpListPath) {
+                try {
+                    $userDest = Join-Path $JumpListDest $profile.Name
+                    New-Item -ItemType Directory -Path $userDest -Force | Out-Null
+                    Copy-Item -Path "$jumpListPath\*" -Destination $userDest -Force -Recurse -ErrorAction SilentlyContinue
+                    $jumpListCount += (Get-ChildItem $userDest -Recurse -File -ErrorAction SilentlyContinue).Count
+                } catch {
+                    Write-Warning "Could not collect jump lists for user $($profile.Name): $_"
+                }
+            }
+        }
+        Write-Host "  Collected $jumpListCount jump list files"
+
+        # LNK Files (Shortcuts - Recent File Access)
+        Write-Host "Collecting LNK files (shortcuts) on remote machine..."
+        $LnkDest = Join-Path $RemoteRawDataPath "lnk_files"
+        New-Item -ItemType Directory -Path $LnkDest -Force | Out-Null
+
+        $lnkCount = 0
+        foreach ($profile in $userProfiles) {
+            $recentPath = Join-Path $profile.FullName "AppData\Roaming\Microsoft\Windows\Recent"
+            $desktopPath = Join-Path $profile.FullName "Desktop"
+
+            if (Test-Path $recentPath) {
+                try {
+                    $userDest = Join-Path $LnkDest "$($profile.Name)_Recent"
+                    New-Item -ItemType Directory -Path $userDest -Force | Out-Null
+                    Copy-Item -Path "$recentPath\*.lnk" -Destination $userDest -Force -ErrorAction SilentlyContinue
+                    $lnkCount += (Get-ChildItem $userDest -Filter "*.lnk" -ErrorAction SilentlyContinue).Count
+                } catch {
+                    Write-Warning "Could not collect LNK files from Recent for user $($profile.Name): $_"
+                }
+            }
+
+            if (Test-Path $desktopPath) {
+                try {
+                    $userDest = Join-Path $LnkDest "$($profile.Name)_Desktop"
+                    New-Item -ItemType Directory -Path $userDest -Force | Out-Null
+                    Copy-Item -Path "$desktopPath\*.lnk" -Destination $userDest -Force -ErrorAction SilentlyContinue
+                    $lnkCount += (Get-ChildItem $userDest -Filter "*.lnk" -ErrorAction SilentlyContinue).Count
+                } catch {
+                    Write-Warning "Could not collect LNK files from Desktop for user $($profile.Name): $_"
+                }
+            }
+        }
+        Write-Host "  Collected $lnkCount LNK files"
 
         # V. MACE Timestamps for Suspicious Files (File System Artifacts)
         Write-Host "Collecting MACE timestamps for referenced executables on remote machine..."
@@ -824,6 +963,52 @@ if ($session) {
         "@{EventFilters=@();EventConsumers=@();FilterBindings=@()}" | ConvertTo-Json | Out-File (Join-Path $RawDataPath "wmi_persistence.json") -Encoding UTF8
     }
 
+    # 0. MOST VOLATILE: Memory Capture (Optional - Large File)
+    if ($CaptureMemory) {
+        Write-Host "Capturing full memory dump (this may take several minutes)..." -ForegroundColor Yellow
+        Write-Warning "Memory capture will create a file approximately the size of installed RAM!"
+
+        $WinPmemUrl = "https://github.com/Velocidex/WinPmem/releases/download/v4.0.rc1/winpmem_mini_x64_rc2.exe"
+        $WinPmemPath = Join-Path $RawDataPath "winpmem.exe"
+        $MemoryDumpPath = Join-Path $RawDataPath "memory.raw"
+
+        try {
+            # Download WinPmem
+            Write-Host "  Downloading WinPmem..."
+            Invoke-WebRequest -Uri $WinPmemUrl -OutFile $WinPmemPath -UseBasicParsing -ErrorAction Stop
+
+            # Execute memory capture
+            Write-Host "  Executing memory capture (this will take time - progress may not be visible)..."
+            $captureStart = Get-Date
+            & $WinPmemPath $MemoryDumpPath -dd 2>&1 | Out-Null
+            $captureEnd = Get-Date
+            $captureDuration = ($captureEnd - $captureStart).TotalSeconds
+
+            if (Test-Path $MemoryDumpPath) {
+                $memorySize = (Get-Item $MemoryDumpPath).Length
+                $memorySizeMB = [math]::Round($memorySize / 1MB, 2)
+                Write-Host "  Memory capture completed: $memorySizeMB MB in $([math]::Round($captureDuration, 2)) seconds" -ForegroundColor Green
+
+                "$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss') :: Memory capture: $memorySizeMB MB captured in $([math]::Round($captureDuration, 2))s" |
+                    Out-File (Join-Path -Path $RawDataPath -ChildPath "Steps_Taken.txt") -Append -Encoding UTF8
+            } else {
+                Write-Warning "Memory capture may have failed - dump file not found."
+            }
+
+            # Clean up WinPmem executable
+            Remove-Item $WinPmemPath -Force -ErrorAction SilentlyContinue
+        }
+        catch {
+            Write-Warning "Could not capture memory: $_"
+            "$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss') :: Memory capture FAILED: $_" |
+                Out-File (Join-Path -Path $RawDataPath -ChildPath "Steps_Taken.txt") -Append -Encoding UTF8
+        }
+    } else {
+        Write-Host "Memory capture SKIPPED (use -CaptureMemory flag to enable). Memory forensics not performed." -ForegroundColor Cyan
+        "$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss') :: Memory capture SKIPPED (preserving time and disk space)" |
+            Out-File (Join-Path -Path $RawDataPath -ChildPath "Steps_Taken.txt") -Append -Encoding UTF8
+    }
+
     # I. Volatile Data: Running Processes (Execution Evidence)
     Write-Host "Collecting Processes Snapshot (Execution)..."
     Get-CimInstance -ClassName Win32_Process |
@@ -951,6 +1136,87 @@ if ($session) {
 
     # Save manifest of collected browser artifacts
     $BrowserArtifacts | ConvertTo-Json -Depth 3 | Out-File (Join-Path $RawDataPath "browser_artifacts.json") -Encoding UTF8
+
+    # IV. Execution History Artifacts: Prefetch, Jump Lists, LNK Files
+
+    # Prefetch Files (Program Execution History)
+    Write-Host "Collecting Prefetch files (execution history)..."
+    $PrefetchDest = Join-Path $RawDataPath "prefetch"
+    $PrefetchPath = "C:\Windows\Prefetch"
+
+    if (Test-Path $PrefetchPath) {
+        try {
+            New-Item -ItemType Directory -Path $PrefetchDest -Force | Out-Null
+            Copy-Item -Path "$PrefetchPath\*.pf" -Destination $PrefetchDest -Force -ErrorAction SilentlyContinue
+
+            $prefetchCount = (Get-ChildItem $PrefetchDest -Filter "*.pf" -ErrorAction SilentlyContinue).Count
+            Write-Host "  Collected $prefetchCount prefetch files"
+
+            "$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss') :: Prefetch collection: $prefetchCount files" |
+                Out-File (Join-Path -Path $RawDataPath -ChildPath "Steps_Taken.txt") -Append -Encoding UTF8
+        } catch {
+            Write-Warning "Could not collect prefetch files: $_"
+        }
+    } else {
+        Write-Warning "Prefetch directory not found."
+    }
+
+    # Jump Lists (Recent Items Accessed)
+    Write-Host "Collecting Jump Lists (recent items)..."
+    $JumpListDest = Join-Path $RawDataPath "jumplists"
+    New-Item -ItemType Directory -Path $JumpListDest -Force | Out-Null
+
+    $userProfiles = Get-ChildItem "C:\Users" -Directory -ErrorAction SilentlyContinue
+    $jumpListCount = 0
+    foreach ($profile in $userProfiles) {
+        $jumpListPath = Join-Path $profile.FullName "AppData\Roaming\Microsoft\Windows\Recent\AutomaticDestinations"
+
+        if (Test-Path $jumpListPath) {
+            try {
+                $userDest = Join-Path $JumpListDest $profile.Name
+                New-Item -ItemType Directory -Path $userDest -Force | Out-Null
+                Copy-Item -Path "$jumpListPath\*" -Destination $userDest -Force -Recurse -ErrorAction SilentlyContinue
+                $jumpListCount += (Get-ChildItem $userDest -Recurse -File -ErrorAction SilentlyContinue).Count
+            } catch {
+                Write-Warning "Could not collect jump lists for user $($profile.Name): $_"
+            }
+        }
+    }
+    Write-Host "  Collected $jumpListCount jump list files"
+
+    # LNK Files (Shortcuts - Recent File Access)
+    Write-Host "Collecting LNK files (shortcuts)..."
+    $LnkDest = Join-Path $RawDataPath "lnk_files"
+    New-Item -ItemType Directory -Path $LnkDest -Force | Out-Null
+
+    $lnkCount = 0
+    foreach ($profile in $userProfiles) {
+        $recentPath = Join-Path $profile.FullName "AppData\Roaming\Microsoft\Windows\Recent"
+        $desktopPath = Join-Path $profile.FullName "Desktop"
+
+        if (Test-Path $recentPath) {
+            try {
+                $userDest = Join-Path $LnkDest "$($profile.Name)_Recent"
+                New-Item -ItemType Directory -Path $userDest -Force | Out-Null
+                Copy-Item -Path "$recentPath\*.lnk" -Destination $userDest -Force -ErrorAction SilentlyContinue
+                $lnkCount += (Get-ChildItem $userDest -Filter "*.lnk" -ErrorAction SilentlyContinue).Count
+            } catch {
+                Write-Warning "Could not collect LNK files from Recent for user $($profile.Name): $_"
+            }
+        }
+
+        if (Test-Path $desktopPath) {
+            try {
+                $userDest = Join-Path $LnkDest "$($profile.Name)_Desktop"
+                New-Item -ItemType Directory -Path $userDest -Force | Out-Null
+                Copy-Item -Path "$desktopPath\*.lnk" -Destination $userDest -Force -ErrorAction SilentlyContinue
+                $lnkCount += (Get-ChildItem $userDest -Filter "*.lnk" -ErrorAction SilentlyContinue).Count
+            } catch {
+                Write-Warning "Could not collect LNK files from Desktop for user $($profile.Name): $_"
+            }
+        }
+    }
+    Write-Host "  Collected $lnkCount LNK files"
 
     # V. MACE Timestamps for Suspicious Files (File System Artifacts)
     Write-Host "Collecting MACE timestamps for referenced executables..."
