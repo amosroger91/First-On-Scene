@@ -209,11 +209,7 @@
               "items": {
                 "type": "object",
                 "properties": {
-                  "eventId": { "type": "integer" },
-                  "timestamp": { "type": "string" },
-                  "logonType": { "type": "integer" },
-                  "targetUser": { "type": "string" },
-                  "sourceAddress": { "type": "string" }
+                  "logEntry": { "type": "string" }
                 }
               },
               "description": "Windows Event ID 4624 or equivalent auth logs"
@@ -242,24 +238,25 @@
               "items": {
                 "type": "object",
                 "properties": {
-                  "filePath": { "type": "string" },
-                  "created": { "type": "string" },
+                  "fileName": { "type": "string" },
+                  "size": { "type": "integer" },
+                  "permissions": { "type": "string" },
+                  "uid": { "type": "integer" },
+                  "gid": { "type": "integer" },
                   "modified": { "type": "string" },
                   "accessed": { "type": "string" },
-                  "entryModified": { "type": "string" },
-                  "size": { "type": "integer" },
-                  "hash": { "type": "string" }
-                },
-                "required": ["filePath"]
+                  "created": { "type": "string" }
+                }
               },
               "description": "MACE timestamps and file attributes"
             },
             "browserArtifacts": {
-              "type": "object",
-              "properties": {
-                "historyFiles": { "type": "array", "items": { "type": "string" } },
-                "downloadFiles": { "type": "array", "items": { "type": "string" } },
-                "cookieFiles": { "type": "array", "items": { "type": "string" } }
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "path": { "type": "string" }
+                }
               },
               "description": "Paths to collected browser database files"
             }
