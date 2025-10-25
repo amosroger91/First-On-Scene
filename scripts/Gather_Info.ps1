@@ -391,6 +391,41 @@ if ($session) {
             Select-Object LocalAddress, LocalPort, RemoteAddress, RemotePort, State, OwningProcess |
             ConvertTo-Json -Depth 3 | Out-File (Join-Path $RemoteRawDataPath "netstat_snapshot.json") -Encoding UTF8
 
+        # I. Volatile Data: Open Files and Handles
+        Write-Host "Collecting Open Files and Handles (Volatile Evidence) on remote machine..."
+        $OpenFilesData = @{
+            OpenFiles = @()
+            SMBSessions = @()
+            MappedDrives = @()
+        }
+
+        # Collect open files via openfiles command (requires admin)
+        try {
+            $openFilesOutput = openfiles /query /fo csv /v 2>$null | ConvertFrom-Csv -ErrorAction SilentlyContinue
+            $OpenFilesData.OpenFiles = $openFilesOutput | Select-Object -First 500
+        } catch {
+            Write-Warning "Could not collect open files via openfiles command on remote machine: $_"
+        }
+
+        # Collect SMB sessions
+        try {
+            $OpenFilesData.SMBSessions = Get-SmbSession -ErrorAction SilentlyContinue |
+                Select-Object ClientComputerName, ClientUserName, NumOpens, SessionId
+        } catch {
+            Write-Warning "Could not collect SMB sessions on remote machine: $_"
+        }
+
+        # Collect mapped network drives
+        try {
+            $OpenFilesData.MappedDrives = Get-PSDrive -PSProvider FileSystem -ErrorAction SilentlyContinue |
+                Where-Object {$_.DisplayRoot} |
+                Select-Object Name, Root, DisplayRoot
+        } catch {
+            Write-Warning "Could not collect mapped drives on remote machine: $_"
+        }
+
+        $OpenFilesData | ConvertTo-Json -Depth 4 | Out-File (Join-Path $RemoteRawDataPath "open_files.json") -Encoding UTF8
+
         # III. Comprehensive Event Log Collection
 
         # Security Event Logs (Logons, Process Creation, Services, Users, Object Access)
@@ -800,6 +835,41 @@ if ($session) {
     Get-NetTCPConnection |
         Select-Object LocalAddress, LocalPort, RemoteAddress, RemotePort, State, OwningProcess |
         ConvertTo-Json -Depth 3 | Out-File (Join-Path $RawDataPath "netstat_snapshot.json") -Encoding UTF8
+
+    # I. Volatile Data: Open Files and Handles
+    Write-Host "Collecting Open Files and Handles (Volatile Evidence)..."
+    $OpenFilesData = @{
+        OpenFiles = @()
+        SMBSessions = @()
+        MappedDrives = @()
+    }
+
+    # Collect open files via openfiles command (requires admin)
+    try {
+        $openFilesOutput = openfiles /query /fo csv /v 2>$null | ConvertFrom-Csv -ErrorAction SilentlyContinue
+        $OpenFilesData.OpenFiles = $openFilesOutput | Select-Object -First 500
+    } catch {
+        Write-Warning "Could not collect open files via openfiles command: $_"
+    }
+
+    # Collect SMB sessions
+    try {
+        $OpenFilesData.SMBSessions = Get-SmbSession -ErrorAction SilentlyContinue |
+            Select-Object ClientComputerName, ClientUserName, NumOpens, SessionId
+    } catch {
+        Write-Warning "Could not collect SMB sessions: $_"
+    }
+
+    # Collect mapped network drives
+    try {
+        $OpenFilesData.MappedDrives = Get-PSDrive -PSProvider FileSystem -ErrorAction SilentlyContinue |
+            Where-Object {$_.DisplayRoot} |
+            Select-Object Name, Root, DisplayRoot
+    } catch {
+        Write-Warning "Could not collect mapped drives: $_"
+    }
+
+    $OpenFilesData | ConvertTo-Json -Depth 4 | Out-File (Join-Path $RawDataPath "open_files.json") -Encoding UTF8
 
     # III. Comprehensive Event Log Collection
 
