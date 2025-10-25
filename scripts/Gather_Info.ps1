@@ -19,15 +19,29 @@
     Optional custom brand name to use in reports instead of "First-On-Scene".
 .PARAMETER LogoPath
     Optional path to a logo image file to include in generated reports.
+.PARAMETER RunRkill
+    Optional switch to execute rkill.exe for malware process termination.
+    WARNING: Rkill modifies system state and will terminate processes, potentially destroying
+    volatile evidence. Only use this flag if you are NOT concerned with forensic evidence integrity
+    or if you have already collected volatile data (memory, network connections, processes).
+    Default: $false (rkill will NOT run unless explicitly requested)
+.PARAMETER EnableDefender
+    Optional switch to enable Windows Defender if it is currently disabled.
+    WARNING: Enabling Defender may alert advanced malware to your presence and could trigger
+    anti-forensics behavior (evidence destruction, lateral movement, C2 alerting).
+    Default: $false (Defender will only be used if already running)
 .EXAMPLE
     .\Gather_Info.ps1
-    Run local forensic collection with default settings.
+    Run local forensic collection with default settings (no rkill, no Defender enabling).
 .EXAMPLE
     .\Gather_Info.ps1 -ComputerName "RemotePC" -Credential (Get-Credential)
     Run remote forensic collection on RemotePC with prompted credentials.
 .EXAMPLE
     .\Gather_Info.ps1 -CustomProblemScript "C:\MyScripts\SendAlert.ps1" -BrandName "Acme Security"
     Run with custom action scripts and custom branding.
+.EXAMPLE
+    .\Gather_Info.ps1 -RunRkill -EnableDefender
+    Run with rkill execution and Defender auto-enable (WARNING: modifies system state).
 #>
 param(
     [Parameter(Mandatory=$false)]
@@ -46,7 +60,13 @@ param(
     [string]$BrandName = "First-On-Scene",
 
     [Parameter(Mandatory=$false)]
-    [string]$LogoPath
+    [string]$LogoPath,
+
+    [Parameter(Mandatory=$false)]
+    [switch]$RunRkill = $false,
+
+    [Parameter(Mandatory=$false)]
+    [switch]$EnableDefender = $false
 )
 
 # Check for administrator privileges
@@ -258,34 +278,42 @@ if ($session) {
             Write-Host "Created remote results directory: ${RemoteRawDataPath}"
         }
 
-        # --- 0. Pre-Scan Remediation: rkill.exe ---
-        Write-Host "Pre-Scan Remediation: Downloading and executing rkill.exe on remote machine..."
-        $rkillUrl = "https://download.bleepingcomputer.com/grinler/rkill.exe"
-        $rkillPath = Join-Path -Path $env:TEMP -ChildPath "rkill.exe"
-        $rkillLogPath = Join-Path -Path $RemoteRawDataPath -ChildPath "rkill_execution.log"
+        # --- 0. Pre-Scan Remediation: rkill.exe (OPTIONAL - MODIFIES SYSTEM STATE) ---
+        if ($RunRkill) {
+            Write-Host "Pre-Scan Remediation: Downloading and executing rkill.exe on remote machine..."
+            Write-Warning "Rkill will terminate malicious processes, modifying system state and destroying volatile evidence!"
 
-        try {
-            # Download rkill.exe
-            Invoke-WebRequest -Uri $rkillUrl -OutFile $rkillPath -UseBasicParsing -ErrorAction Stop
-            Write-Host "rkill.exe downloaded successfully to ${rkillPath}"
+            $rkillUrl = "https://download.bleepingcomputer.com/grinler/rkill.exe"
+            $rkillPath = Join-Path -Path $env:TEMP -ChildPath "rkill.exe"
+            $rkillLogPath = Join-Path -Path $RemoteRawDataPath -ChildPath "rkill_execution.log"
 
-            # Execute rkill.exe silently
-            $rkillProcess = Start-Process -FilePath $rkillPath -ArgumentList "-s" -Wait -PassThru -NoNewWindow -RedirectStandardOutput $rkillLogPath
-            Write-Host "rkill.exe executed. Exit code: $($rkillProcess.ExitCode)"
+            try {
+                # Download rkill.exe
+                Invoke-WebRequest -Uri $rkillUrl -OutFile $rkillPath -UseBasicParsing -ErrorAction Stop
+                Write-Host "rkill.exe downloaded successfully to ${rkillPath}"
 
-            # Log action to Steps_Taken.txt
-            $stepsLog = Join-Path -Path $RemoteRawDataPath -ChildPath "Steps_Taken.txt"
-            "$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss') :: Pre-Scan Remediation: rkill.exe executed (Exit Code: $($rkillProcess.ExitCode))" |
-                Out-File $stepsLog -Append -Encoding UTF8
+                # Execute rkill.exe silently
+                $rkillProcess = Start-Process -FilePath $rkillPath -ArgumentList "-s" -Wait -PassThru -NoNewWindow -RedirectStandardOutput $rkillLogPath
+                Write-Host "rkill.exe executed. Exit code: $($rkillProcess.ExitCode)"
 
-            # Clean up rkill executable
-            if (Test-Path $rkillPath) {
-                Remove-Item -Path $rkillPath -Force -ErrorAction SilentlyContinue
+                # Log action to Steps_Taken.txt
+                $stepsLog = Join-Path -Path $RemoteRawDataPath -ChildPath "Steps_Taken.txt"
+                "$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss') :: Pre-Scan Remediation: rkill.exe executed (Exit Code: $($rkillProcess.ExitCode))" |
+                    Out-File $stepsLog -Append -Encoding UTF8
+
+                # Clean up rkill executable
+                if (Test-Path $rkillPath) {
+                    Remove-Item -Path $rkillPath -Force -ErrorAction SilentlyContinue
+                }
             }
-        }
-        catch {
-            Write-Warning "rkill.exe execution failed on remote machine: ${PSItem}"
-            "$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss') :: Pre-Scan Remediation: rkill.exe failed - ${PSItem}" |
+            catch {
+                Write-Warning "rkill.exe execution failed on remote machine: ${PSItem}"
+                "$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss') :: Pre-Scan Remediation: rkill.exe failed - ${PSItem}" |
+                    Out-File (Join-Path -Path $RemoteRawDataPath -ChildPath "Steps_Taken.txt") -Append -Encoding UTF8
+            }
+        } else {
+            Write-Host "Rkill execution SKIPPED (use -RunRkill flag to enable). Preserving volatile evidence integrity." -ForegroundColor Cyan
+            "$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss') :: Pre-Scan Remediation: rkill.exe SKIPPED (preserving evidence integrity)" |
                 Out-File (Join-Path -Path $RemoteRawDataPath -ChildPath "Steps_Taken.txt") -Append -Encoding UTF8
         }
 
@@ -557,19 +585,25 @@ if ($session) {
                 $wasDefenderDisabled = $false
 
                 if ($DefenderService -and $DefenderService.Status -ne "Running") {
-                    Write-Warning "Windows Defender Service ('WinDefend') is not running on remote machine. Attempting to start it..."
-                    try {
-                        Start-Service -Name WinDefend -ErrorAction Stop
-                        Start-Sleep -Seconds 5  # Give the service time to fully start
-                        $DefenderService = Get-Service -Name WinDefend -ErrorAction SilentlyContinue
-                        if ($DefenderService.Status -eq "Running") {
-                            Write-Host "Windows Defender Service started successfully." -ForegroundColor Green
-                            $wasDefenderDisabled = $true
+                    if ($EnableDefender) {
+                        Write-Warning "Windows Defender Service ('WinDefend') is not running on remote machine. Attempting to start it..."
+                        Write-Warning "Enabling Defender may alert advanced malware and trigger anti-forensics behavior!"
+                        try {
+                            Start-Service -Name WinDefend -ErrorAction Stop
+                            Start-Sleep -Seconds 5  # Give the service time to fully start
+                            $DefenderService = Get-Service -Name WinDefend -ErrorAction SilentlyContinue
+                            if ($DefenderService.Status -eq "Running") {
+                                Write-Host "Windows Defender Service started successfully." -ForegroundColor Green
+                                $wasDefenderDisabled = $true
+                            }
                         }
-                    }
-                    catch {
-                        Write-Warning "Failed to start Windows Defender Service on remote machine: $_"
-                        "Windows Defender Service could not be started on remote machine. Skipping scan." | Out-File $DefenderLogPath -Encoding UTF8
+                        catch {
+                            Write-Warning "Failed to start Windows Defender Service on remote machine: $_"
+                            "Windows Defender Service could not be started on remote machine. Skipping scan." | Out-File $DefenderLogPath -Encoding UTF8
+                        }
+                    } else {
+                        Write-Host "Windows Defender Service is not running. Skipping scan (use -EnableDefender to force enable)." -ForegroundColor Yellow
+                        "Windows Defender Service not running. Scan SKIPPED (preserving stealth)." | Out-File $DefenderLogPath -Encoding UTF8
                     }
                 }
 
@@ -654,34 +688,42 @@ if ($session) {
     # Local Execution
     Write-Host "--- Gather_Info.ps1: Starting local data collection ---"
 
-    # --- 0. Pre-Scan Remediation: rkill.exe ---
-    Write-Host "Pre-Scan Remediation: Downloading and executing rkill.exe..."
-    $rkillUrl = "https://download.bleepingcomputer.com/grinler/rkill.exe"
-    $rkillPath = Join-Path -Path $env:TEMP -ChildPath "rkill.exe"
-    $rkillLogPath = Join-Path -Path $RawDataPath -ChildPath "rkill_execution.log"
+    # --- 0. Pre-Scan Remediation: rkill.exe (OPTIONAL - MODIFIES SYSTEM STATE) ---
+    if ($RunRkill) {
+        Write-Host "Pre-Scan Remediation: Downloading and executing rkill.exe..."
+        Write-Warning "Rkill will terminate malicious processes, modifying system state and destroying volatile evidence!"
 
-    try {
-        # Download rkill.exe
-        Invoke-WebRequest -Uri $rkillUrl -OutFile $rkillPath -UseBasicParsing -ErrorAction Stop
-        Write-Host "rkill.exe downloaded successfully to ${rkillPath}"
+        $rkillUrl = "https://download.bleepingcomputer.com/grinler/rkill.exe"
+        $rkillPath = Join-Path -Path $env:TEMP -ChildPath "rkill.exe"
+        $rkillLogPath = Join-Path -Path $RawDataPath -ChildPath "rkill_execution.log"
 
-        # Execute rkill.exe silently
-        $rkillProcess = Start-Process -FilePath $rkillPath -ArgumentList "-s" -Wait -PassThru -NoNewWindow -RedirectStandardOutput $rkillLogPath
-        Write-Host "rkill.exe executed. Exit code: $($rkillProcess.ExitCode)"
+        try {
+            # Download rkill.exe
+            Invoke-WebRequest -Uri $rkillUrl -OutFile $rkillPath -UseBasicParsing -ErrorAction Stop
+            Write-Host "rkill.exe downloaded successfully to ${rkillPath}"
 
-        # Log action to Steps_Taken.txt
-        $stepsLog = Join-Path -Path $RawDataPath -ChildPath "Steps_Taken.txt"
-        "$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss') :: Pre-Scan Remediation: rkill.exe executed (Exit Code: $($rkillProcess.ExitCode))" |
-            Out-File $stepsLog -Append -Encoding UTF8
+            # Execute rkill.exe silently
+            $rkillProcess = Start-Process -FilePath $rkillPath -ArgumentList "-s" -Wait -PassThru -NoNewWindow -RedirectStandardOutput $rkillLogPath
+            Write-Host "rkill.exe executed. Exit code: $($rkillProcess.ExitCode)"
 
-        # Clean up rkill executable
-        if (Test-Path $rkillPath) {
-            Remove-Item -Path $rkillPath -Force -ErrorAction SilentlyContinue
+            # Log action to Steps_Taken.txt
+            $stepsLog = Join-Path -Path $RawDataPath -ChildPath "Steps_Taken.txt"
+            "$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss') :: Pre-Scan Remediation: rkill.exe executed (Exit Code: $($rkillProcess.ExitCode))" |
+                Out-File $stepsLog -Append -Encoding UTF8
+
+            # Clean up rkill executable
+            if (Test-Path $rkillPath) {
+                Remove-Item -Path $rkillPath -Force -ErrorAction SilentlyContinue
+            }
         }
-    }
-    catch {
-        Write-Warning "rkill.exe execution failed: ${PSItem}"
-        "$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss') :: Pre-Scan Remediation: rkill.exe failed - ${PSItem}" |
+        catch {
+            Write-Warning "rkill.exe execution failed: ${PSItem}"
+            "$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss') :: Pre-Scan Remediation: rkill.exe failed - ${PSItem}" |
+                Out-File (Join-Path -Path $RawDataPath -ChildPath "Steps_Taken.txt") -Append -Encoding UTF8
+        }
+    } else {
+        Write-Host "Rkill execution SKIPPED (use -RunRkill flag to enable). Preserving volatile evidence integrity." -ForegroundColor Cyan
+        "$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss') :: Pre-Scan Remediation: rkill.exe SKIPPED (preserving evidence integrity)" |
             Out-File (Join-Path -Path $RawDataPath -ChildPath "Steps_Taken.txt") -Append -Encoding UTF8
     }
 
@@ -953,19 +995,25 @@ if ($session) {
             $wasDefenderDisabled = $false
 
             if ($DefenderService -and $DefenderService.Status -ne "Running") {
-                Write-Warning "Windows Defender Service ('WinDefend') is not running. Attempting to start it..."
-                try {
-                    Start-Service -Name WinDefend -ErrorAction Stop
-                    Start-Sleep -Seconds 5  # Give the service time to fully start
-                    $DefenderService = Get-Service -Name WinDefend -ErrorAction SilentlyContinue
-                    if ($DefenderService.Status -eq "Running") {
-                        Write-Host "Windows Defender Service started successfully." -ForegroundColor Green
-                        $wasDefenderDisabled = $true
+                if ($EnableDefender) {
+                    Write-Warning "Windows Defender Service ('WinDefend') is not running. Attempting to start it..."
+                    Write-Warning "Enabling Defender may alert advanced malware and trigger anti-forensics behavior!"
+                    try {
+                        Start-Service -Name WinDefend -ErrorAction Stop
+                        Start-Sleep -Seconds 5  # Give the service time to fully start
+                        $DefenderService = Get-Service -Name WinDefend -ErrorAction SilentlyContinue
+                        if ($DefenderService.Status -eq "Running") {
+                            Write-Host "Windows Defender Service started successfully." -ForegroundColor Green
+                            $wasDefenderDisabled = $true
+                        }
                     }
-                }
-                catch {
-                    Write-Warning "Failed to start Windows Defender Service: $_"
-                    "Windows Defender Service could not be started. Skipping scan." | Out-File $DefenderLogPath -Encoding UTF8
+                    catch {
+                        Write-Warning "Failed to start Windows Defender Service: $_"
+                        "Windows Defender Service could not be started. Skipping scan." | Out-File $DefenderLogPath -Encoding UTF8
+                    }
+                } else {
+                    Write-Host "Windows Defender Service is not running. Skipping scan (use -EnableDefender to force enable)." -ForegroundColor Yellow
+                    "Windows Defender Service not running. Scan SKIPPED (preserving stealth)." | Out-File $DefenderLogPath -Encoding UTF8
                 }
             }
 
