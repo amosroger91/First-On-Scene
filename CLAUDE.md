@@ -4,17 +4,63 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-**First-On-Scene** is an Agentic Cyber Incident Response Triage Toolkit designed to act as a "First Responding Officer" for cybersecurity incidents. The system operates as a Triage Agent that collects forensic artifacts from potentially compromised Windows systems (local or remote), analyzes the data deterministically, and makes a decisive call on whether a security incident has occurred.
+**First-On-Scene** is an Agentic Cyber Incident Response Triage Toolkit designed to act as a "First Responding Officer" for cybersecurity incidents. The system operates as a Triage Agent that collects forensic artifacts from potentially compromised systems (Windows/Linux/macOS), analyzes the data deterministically, and makes a decisive call on whether a security incident has occurred.
 
 **Core Philosophy**: Maintain high skepticism and seek deterministic proof. Separate actual threats from false positives while preserving evidence integrity. The goal is comprehensive triage—find *everything*, not just the first thing.
 
 ## Architecture
 
-### Three-Script Workflow
+### **⚠️ MIGRATION IN PROGRESS: Hybrid Node.js + TypeScript Architecture**
 
-The system follows a strict sequential workflow orchestrated by the Triage Agent (LLM):
+**Current Status**: Phase 0 (Architecture Setup) - COMPLETE ✅
+- Node.js/TypeScript orchestrator established
+- Cross-platform foundation implemented
+- Legacy PowerShell scripts moved to `scripts/win/`
+- JSON schema defined for data contracts
 
-1. **`scripts/Gather_Info.ps1`** - Data Collection
+**Next Steps**: See `dev/task.txt` for Phase 1-4 implementation plan
+
+### New Hybrid Architecture (v2.0+)
+
+The system is transitioning to a **hybrid architecture** with:
+- **Node.js/TypeScript Core** (`src/`) - Cross-platform orchestrator, CLI, API integration
+- **Native Scripts** - OS-specific data collection:
+  - `scripts/win/` - PowerShell scripts for Windows
+  - `scripts/nix/` - Bash scripts for Linux/macOS (planned)
+
+**Key Components**:
+- `src/cli.ts` - Main CLI entry point (`fos-triage` command)
+- `src/modules/platform.ts` - OS detection and script routing
+- `src/modules/executor.ts` - Native script execution with timeout/capture
+- `src/modules/schema-validator.ts` - JSON schema validation (Ajv)
+- `src/types/index.ts` - TypeScript type definitions
+- `schemas/artifact_schema.json` - **Data contract** for native scripts
+
+**Data Flow**:
+1. CLI detects OS and routes to appropriate native script
+2. Native script collects artifacts, outputs JSON to stdout (conforming to schema)
+3. Node.js executor captures stdout, validates against schema
+4. Typed artifact data passed to AI triage logic
+5. Final decision triggers action scripts
+
+**Building & Running**:
+```bash
+npm install          # Install dependencies
+npm run build        # Compile TypeScript to dist/
+npm run dev          # Run with ts-node (development)
+node dist/cli.js     # Run compiled CLI
+
+# Commands
+fos-triage info      # Platform detection and status
+fos-triage collect   # Collect artifacts (Phase 1+)
+fos-triage analyze   # AI triage (Phase 3+)
+```
+
+### Legacy PowerShell Workflow (Current Production)
+
+The original PowerShell-based system follows a strict sequential workflow orchestrated by the Triage Agent (LLM):
+
+1. **`scripts/win/Gather_Info.ps1`** - Data Collection
    - Collects volatile and persistent forensic artifacts from the target system
    - Supports both local execution (`localhost`) and remote execution via PSRemoting
    - Parameters: `-ComputerName` (default: "localhost"), `-Credential` (optional)
@@ -22,7 +68,7 @@ The system follows a strict sequential workflow orchestrated by the Triage Agent
    - Executes antivirus scans (ClamAV, Windows Defender)
    - Requires Administrator privileges for full artifact collection
 
-2. **`scripts/Parse_Results.ps1`** - Data Analysis
+2. **`scripts/win/Parse_Results.ps1`** - Data Analysis
    - Reads raw JSON artifacts from `results/` directory
    - Applies deterministic triage logic across four categories:
      - **Persistence**: Non-standard registry Run keys
@@ -32,10 +78,10 @@ The system follows a strict sequential workflow orchestrated by the Triage Agent
    - Outputs structured findings to `results/Info_Results.txt`
 
 3. **Final Decision Scripts**:
-   - **`scripts/Problem_Detected.ps1 [REASON_CODE]`** - Escalation for confirmed incidents
+   - **`scripts/win/Problem_Detected.ps1 [REASON_CODE]`** - Escalation for confirmed incidents
      - Requires a single capitalized argument (e.g., "MALWARE_DETECTED", "RANSOMWARE_ENCRYPTED_FILES")
      - Displays critical incident alert and logs to `results/Steps_Taken.txt`
-   - **`scripts/All_Clear.ps1`** - Clears the incident (false positive or contained event)
+   - **`scripts/win/All_Clear.ps1`** - Clears the incident (false positive or contained event)
      - No arguments required
      - Logs clearance to `results/Steps_Taken.txt`
 

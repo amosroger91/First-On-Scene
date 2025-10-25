@@ -1,0 +1,51 @@
+{
+  "name": "first-on-scene",
+  "version": "2.0.0",
+  "description": "AI-Powered Incident Response Triage Toolkit - Cross-Platform Edition",
+  "main": "dist/cli.js",
+  "bin": {
+    "fos-triage": "./dist/cli.js"
+  },
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/cli.js",
+    "dev": "ts-node src/cli.ts",
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "lint": "eslint src/**/*.ts",
+    "clean": "rimraf dist"
+  },
+  "keywords": [
+    "incident-response",
+    "forensics",
+    "triage",
+    "cybersecurity",
+    "ai",
+    "windows",
+    "linux",
+    "cross-platform"
+  ],
+  "author": "First-On-Scene Contributors",
+  "license": "MIT",
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "dependencies": {
+    "commander": "^12.1.0",
+    "chalk": "^4.1.2",
+    "ora": "^5.4.1",
+    "dotenv": "^16.4.5",
+    "ajv": "^8.17.1",
+    "axios": "^1.7.9",
+    "ssh2": "^1.15.0"
+  },
+  "devDependencies": {
+    "typescript": "^5.7.2",
+    "ts-node": "^10.9.2",
+    "@types/node": "^22.10.5",
+    "@types/ssh2": "^1.15.1",
+    "@typescript-eslint/eslint-plugin": "^8.19.1",
+    "@typescript-eslint/parser": "^8.19.1",
+    "eslint": "^9.18.0",
+    "rimraf": "^6.0.1"
+  }
+}

@@ -1,0 +1,317 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://first-on-scene.io/schemas/artifact_schema.json",
+  "title": "First-On-Scene Forensic Artifact Schema",
+  "description": "Standard JSON schema for forensic artifacts collected by native scripts (PowerShell/Bash). ALL native data collection scripts MUST output JSON that conforms to this schema to stdout.",
+  "type": "object",
+  "required": [
+    "metadata",
+    "artifacts"
+  ],
+  "properties": {
+    "metadata": {
+      "type": "object",
+      "required": [
+        "collectionTimestamp",
+        "targetHostname",
+        "platform",
+        "collectorVersion"
+      ],
+      "properties": {
+        "collectionTimestamp": {
+          "type": "string",
+          "format": "date-time",
+          "description": "ISO 8601 timestamp when collection started"
+        },
+        "targetHostname": {
+          "type": "string",
+          "description": "Hostname of the analyzed system"
+        },
+        "platform": {
+          "type": "string",
+          "enum": ["windows", "linux", "darwin"],
+          "description": "Operating system platform"
+        },
+        "collectorVersion": {
+          "type": "string",
+          "description": "Version of the collection script (e.g., '2.0.0')"
+        },
+        "executionMode": {
+          "type": "string",
+          "enum": ["local", "remote"],
+          "description": "Whether collection ran locally or remotely"
+        },
+        "errors": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "component": { "type": "string" },
+              "message": { "type": "string" },
+              "timestamp": { "type": "string", "format": "date-time" }
+            },
+            "required": ["component", "message"]
+          },
+          "description": "Non-fatal errors encountered during collection"
+        }
+      }
+    },
+    "artifacts": {
+      "type": "object",
+      "description": "Container for all collected forensic artifacts",
+      "properties": {
+        "persistence": {
+          "type": "object",
+          "description": "Persistence mechanisms (autorun locations, scheduled tasks, services)",
+          "properties": {
+            "registryRunKeys": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "hive": { "type": "string" },
+                  "keyPath": { "type": "string" },
+                  "valueName": { "type": "string" },
+                  "valueData": { "type": "string" }
+                },
+                "required": ["hive", "keyPath", "valueName", "valueData"]
+              }
+            },
+            "scheduledTasks": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "taskName": { "type": "string" },
+                  "state": { "type": "string" },
+                  "enabled": { "type": "boolean" },
+                  "author": { "type": "string" },
+                  "actions": { "type": "string" },
+                  "triggers": { "type": "string" }
+                },
+                "required": ["taskName", "state"]
+              }
+            },
+            "services": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "name": { "type": "string" },
+                  "displayName": { "type": "string" },
+                  "state": { "type": "string" },
+                  "startMode": { "type": "string" },
+                  "pathName": { "type": "string" }
+                },
+                "required": ["name", "state", "startMode"]
+              }
+            },
+            "wmiEventSubscriptions": {
+              "type": "object",
+              "properties": {
+                "eventFilters": { "type": "array", "items": { "type": "object" } },
+                "eventConsumers": { "type": "array", "items": { "type": "object" } },
+                "filterBindings": { "type": "array", "items": { "type": "object" } }
+              }
+            },
+            "cronJobs": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "user": { "type": "string" },
+                  "schedule": { "type": "string" },
+                  "command": { "type": "string" }
+                }
+              },
+              "description": "Linux/macOS cron jobs"
+            },
+            "systemdServices": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "unit": { "type": "string" },
+                  "state": { "type": "string" },
+                  "enabled": { "type": "boolean" },
+                  "execStart": { "type": "string" }
+                }
+              },
+              "description": "Linux systemd services"
+            }
+          }
+        },
+        "execution": {
+          "type": "object",
+          "description": "Evidence of program execution (processes, event logs)",
+          "properties": {
+            "processes": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "processId": { "type": "integer" },
+                  "name": { "type": "string" },
+                  "executablePath": { "type": "string" },
+                  "commandLine": { "type": "string" },
+                  "parentProcessId": { "type": "integer" },
+                  "user": { "type": "string" }
+                },
+                "required": ["processId", "name"]
+              }
+            },
+            "processCreationEvents": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "eventId": { "type": "integer" },
+                  "timestamp": { "type": "string" },
+                  "newProcessName": { "type": "string" },
+                  "commandLine": { "type": "string" },
+                  "parentProcessName": { "type": "string" },
+                  "user": { "type": "string" }
+                }
+              },
+              "description": "Windows Event ID 4688 or equivalent"
+            }
+          }
+        },
+        "network": {
+          "type": "object",
+          "description": "Network connection state",
+          "properties": {
+            "connections": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "protocol": { "type": "string" },
+                  "localAddress": { "type": "string" },
+                  "localPort": { "type": "integer" },
+                  "remoteAddress": { "type": "string" },
+                  "remotePort": { "type": "integer" },
+                  "state": { "type": "string" },
+                  "processId": { "type": "integer" },
+                  "processName": { "type": "string" }
+                },
+                "required": ["protocol", "localAddress", "localPort", "state"]
+              }
+            }
+          }
+        },
+        "credentialAccess": {
+          "type": "object",
+          "description": "Credential access and authentication events",
+          "properties": {
+            "logonEvents": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "eventId": { "type": "integer" },
+                  "timestamp": { "type": "string" },
+                  "logonType": { "type": "integer" },
+                  "targetUser": { "type": "string" },
+                  "sourceAddress": { "type": "string" }
+                }
+              },
+              "description": "Windows Event ID 4624 or equivalent auth logs"
+            },
+            "privilegeEscalationEvents": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "eventId": { "type": "integer" },
+                  "timestamp": { "type": "string" },
+                  "user": { "type": "string" },
+                  "privileges": { "type": "string" }
+                }
+              },
+              "description": "Windows Event ID 4672 or sudo logs"
+            }
+          }
+        },
+        "fileSystem": {
+          "type": "object",
+          "description": "File system artifacts and metadata",
+          "properties": {
+            "fileMetadata": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "filePath": { "type": "string" },
+                  "created": { "type": "string" },
+                  "modified": { "type": "string" },
+                  "accessed": { "type": "string" },
+                  "entryModified": { "type": "string" },
+                  "size": { "type": "integer" },
+                  "hash": { "type": "string" }
+                },
+                "required": ["filePath"]
+              },
+              "description": "MACE timestamps and file attributes"
+            },
+            "browserArtifacts": {
+              "type": "object",
+              "properties": {
+                "historyFiles": { "type": "array", "items": { "type": "string" } },
+                "downloadFiles": { "type": "array", "items": { "type": "string" } },
+                "cookieFiles": { "type": "array", "items": { "type": "string" } }
+              },
+              "description": "Paths to collected browser database files"
+            }
+          }
+        },
+        "powerShellActivity": {
+          "type": "object",
+          "description": "PowerShell operational logs (Windows-specific)",
+          "properties": {
+            "scriptBlockLogs": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "timestamp": { "type": "string" },
+                  "scriptBlock": { "type": "string" },
+                  "path": { "type": "string" }
+                }
+              }
+            }
+          }
+        },
+        "antivirusScans": {
+          "type": "object",
+          "description": "Antivirus scan results",
+          "properties": {
+            "defenderScan": {
+              "type": "object",
+              "properties": {
+                "executed": { "type": "boolean" },
+                "threatsFound": { "type": "integer" },
+                "scanLog": { "type": "string" }
+              }
+            },
+            "clamavScan": {
+              "type": "object",
+              "properties": {
+                "executed": { "type": "boolean" },
+                "threatsFound": { "type": "integer" },
+                "scanLog": { "type": "string" }
+              }
+            },
+            "rkillExecution": {
+              "type": "object",
+              "properties": {
+                "executed": { "type": "boolean" },
+                "log": { "type": "string" }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}
