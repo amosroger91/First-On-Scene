@@ -36,9 +36,8 @@ program
       console.log(`Platform detected: ${PlatformDetector.getPlatformDisplayName()}`);
 
       // Platform support check
-      if (platform !== 'windows') {
-        console.error('❌ Error: Currently only Windows is supported.');
-        console.error('   Linux and macOS support is under development (see dev/task.txt).');
+      if (platform !== 'windows' && platform !== 'linux' && platform !== 'darwin') {
+        console.error(`❌ Error: Platform ${platform} is not supported.`);
         process.exit(1);
       }
 
