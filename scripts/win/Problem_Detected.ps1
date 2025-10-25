@@ -94,7 +94,7 @@ param(
     [string]$CustomActionScript
 )
 
-$LogPath = Join-Path -Path (Split-Path -Path $PSScriptRoot -Parent) -ChildPath "results\Steps_Taken.txt"
+$LogPath = Join-Path -Path (Split-Path -Path (Split-Path -Path $PSScriptRoot -Parent) -Parent) -ChildPath "results\Steps_Taken.txt"
 
 # Execute custom action script if provided
 if ($CustomActionScript -and (Test-Path $CustomActionScript)) {

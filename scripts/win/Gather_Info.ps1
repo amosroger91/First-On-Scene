@@ -257,7 +257,9 @@ if (Test-WingetInstallation) {
     Write-Warning "Skipping software installation as Winget is not available."
 }
 
-$RawDataPath = Join-Path -Path (Split-Path -Path $PSScriptRoot -Parent) -ChildPath "results"
+# Get root path (scripts/win/ -> scripts/ -> root/)
+$RootDirectory = Split-Path -Path (Split-Path -Path $PSScriptRoot -Parent) -Parent
+$RawDataPath = Join-Path -Path $RootDirectory -ChildPath "results"
 
 # --- 1. Setup ---
 if (-not (Test-Path $RawDataPath)) {
@@ -1559,7 +1561,7 @@ $CodeContext
 }
 
 # Prepare system prompt
-$SystemPromptPath = Join-Path -Path (Split-Path -Path $PSScriptRoot -Parent) -ChildPath "system_prompt.txt"
+$SystemPromptPath = Join-Path -Path $RootDirectory -ChildPath "system_prompt.txt"
 Write-Host "System prompt loaded: $SystemPromptPath"
 
 # OpenRouter model - Using Qwen3 Coder 480B A35B (free tier)
@@ -1606,8 +1608,7 @@ Write-Host ""
 
 try {
     # Change to repository root for qwen CLI execution
-    $repoRoot = Split-Path -Path $PSScriptRoot -Parent
-    Set-Location $repoRoot
+    Set-Location $RootDirectory
 
     Write-Host "Executing qwen CLI..." -ForegroundColor Gray
     Write-Host ""

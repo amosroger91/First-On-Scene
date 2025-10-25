@@ -19,7 +19,7 @@ param(
 $ErrorActionPreference = "Continue"
 
 # Paths
-$ScriptDir = Split-Path -Path $PSScriptRoot -Parent
+$ScriptDir = Split-Path -Path (Split-Path -Path $PSScriptRoot -Parent) -Parent
 $ResultsPath = Join-Path -Path $ScriptDir -ChildPath "results"
 $OutputPathHTML = Join-Path -Path $ResultsPath -ChildPath "Incident_Report_${ComputerName}_$(Get-Date -Format 'yyyyMMdd_HHmmss').html"
 $OutputPathDOCX = Join-Path -Path $ResultsPath -ChildPath "Incident_Report_${ComputerName}_$(Get-Date -Format 'yyyyMMdd_HHmmss').docx"

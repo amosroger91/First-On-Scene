@@ -37,15 +37,22 @@
 
 **Download and run from GitHub (PowerShell as Administrator):**
 ```powershell
-$d=(Join-Path $env:TEMP "FOS_Run"); New-Item -ItemType Directory -Path $d -Force | Out-Null; iwr "https://github.com/amosroger91/First-On-Scene/archive/refs/heads/main.zip" -OutFile "$d\m.zip" -UseBasicParsing; Expand-Archive -Path "$d\m.zip" -DestinationPath $d -Force; & "$d\First-On-Scene-main\scripts\Gather_Info.ps1"
+$d=(Join-Path $env:TEMP "FOS_Run"); New-Item -ItemType Directory -Path $d -Force | Out-Null; iwr "https://github.com/amosroger91/First-On-Scene/archive/refs/heads/main.zip" -OutFile "$d\m.zip" -UseBasicParsing; Expand-Archive -Path "$d\m.zip" -DestinationPath $d -Force; & "$d\First-On-Scene-main\scripts\win\Gather_Info.ps1"
 ```
 
 **Or clone and run locally:**
 ```powershell
 git clone https://github.com/amosroger91/First-On-Scene.git
 cd First-On-Scene
-.\scripts\Gather_Info.ps1
+.\scripts\win\Gather_Info.ps1
 ```
+
+**Analyze a remote computer (e.g., KS-BENCH01):**
+```powershell
+$d=(Join-Path $env:TEMP "FOS_Run"); New-Item -ItemType Directory -Path $d -Force | Out-Null; iwr "https://github.com/amosroger91/First-On-Scene/archive/refs/heads/main.zip" -OutFile "$d\m.zip" -UseBasicParsing; Expand-Archive -Path "$d\m.zip" -DestinationPath $d -Force; & "$d\First-On-Scene-main\scripts\win\Gather_Info.ps1" -ComputerName "KS-BENCH01"
+```
+
+**💡 Tip**: See [ONE_LINERS.md](ONE_LINERS.md) for platform-specific commands, branding options, and advanced usage.
 
 **What happens automatically:**
 1. ✅ Collects volatile forensic artifacts (network connections, processes, open files)
