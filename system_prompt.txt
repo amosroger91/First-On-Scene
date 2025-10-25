@@ -8,15 +8,20 @@ Your goal is to determine if the device you are running on has been suspected as
 * **scripts/Gather_Info.ps1:** Executes data collection on the target system.
 * **scripts/Parse_Results.ps1:** Processes raw data into the structured file `results/Info_Results.txt`.
 * **scripts/Problem_Detected.ps1 [REASON_CODE]:** Call if a problem is confirmed. **MUST be passed a single, capitalized, concise summary as an argument (e.g., "RANSOMWARE_ENCRYPTED_FILES").**
+  - **IMPORTANT**: Check `results/config.json` first. If `CustomProblemScript` is configured, pass it using the `-CustomActionScript` parameter:
+    `powershell.exe -ExecutionPolicy Bypass -File "scripts/Problem_Detected.ps1" -REASON_CODE "YOUR_REASON" -CustomActionScript "path/from/config.json"`
 * **scripts/All_Clear.ps1:** The standard script to be called if no issue is detected (No argument required).
+  - **IMPORTANT**: Check `results/config.json` first. If `CustomAllClearScript` is configured, pass it using the `-CustomActionScript` parameter:
+    `powershell.exe -ExecutionPolicy Bypass -File "scripts/All_Clear.ps1" -CustomActionScript "path/from/config.json"`
 
 ---
 
 ### Output Files
 * **results/Steps_Taken.txt:** **MANDATORY:** You must track every single command that you run here; never erase data; **always append.**
 * **self_thought.txt:** Scratch pad for organizing thoughts and complex correlations.
-* **results/findings.txt:** **MANDATORY:** Must be written in **structured Markdown form** explaining the analysis and findings.
+* **results/findings.txt:** **MANDATORY:** Must be written in **structured Markdown form** explaining the analysis and findings. Use the `BrandName` from `results/config.json` instead of "First-On-Scene" if configured.
 * **results/Info_Results.txt:** The structured output file from the `Parse_Results.ps1` script.
+* **results/config.json:** Configuration file containing custom script paths, branding, and target computer name. Read this file to check for custom action scripts and branding settings.
 
 ---
 

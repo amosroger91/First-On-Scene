@@ -4,13 +4,49 @@
 .DESCRIPTION
     Collects live processes, network state, basic persistence mechanisms, and event logs
     using only native PowerShell and stores raw output in the 'results' directory.
+.PARAMETER ComputerName
+    The name of the computer to collect data from. Default is "localhost" for local execution.
+    For remote execution, provide the remote computer name (requires WinRM/PSRemoting enabled).
+.PARAMETER Credential
+    Optional credentials for remote execution. If not provided, current user credentials are used.
+.PARAMETER CustomProblemScript
+    Optional path to a custom PowerShell script that will be called instead of the default
+    Problem_Detected.ps1 action. This script will receive the REASON_CODE as its first parameter.
+.PARAMETER CustomAllClearScript
+    Optional path to a custom PowerShell script that will be called instead of the default
+    All_Clear.ps1 action.
+.PARAMETER BrandName
+    Optional custom brand name to use in reports instead of "First-On-Scene".
+.PARAMETER LogoPath
+    Optional path to a logo image file to include in generated reports.
+.EXAMPLE
+    .\Gather_Info.ps1
+    Run local forensic collection with default settings.
+.EXAMPLE
+    .\Gather_Info.ps1 -ComputerName "RemotePC" -Credential (Get-Credential)
+    Run remote forensic collection on RemotePC with prompted credentials.
+.EXAMPLE
+    .\Gather_Info.ps1 -CustomProblemScript "C:\MyScripts\SendAlert.ps1" -BrandName "Acme Security"
+    Run with custom action scripts and custom branding.
 #>
 param(
     [Parameter(Mandatory=$false)]
     [string]$ComputerName = "localhost",
 
     [Parameter(Mandatory=$false)]
-    [System.Management.Automation.PSCredential]$Credential
+    [System.Management.Automation.PSCredential]$Credential,
+
+    [Parameter(Mandatory=$false)]
+    [string]$CustomProblemScript,
+
+    [Parameter(Mandatory=$false)]
+    [string]$CustomAllClearScript,
+
+    [Parameter(Mandatory=$false)]
+    [string]$BrandName = "First-On-Scene",
+
+    [Parameter(Mandatory=$false)]
+    [string]$LogoPath
 )
 
 # Check for administrator privileges
@@ -196,6 +232,19 @@ if (-not (Test-Path $RawDataPath)) {
     New-Item -Path $RawDataPath -ItemType Directory | Out-Null
     Write-Host "Created results directory: $RawDataPath"
 }
+
+# Save configuration for AI Triage Agent
+$ConfigPath = Join-Path -Path $RawDataPath -ChildPath "config.json"
+$Config = @{
+    ComputerName = $ComputerName
+    BrandName = $BrandName
+    LogoPath = if ($LogoPath) { $LogoPath } else { $null }
+    CustomProblemScript = if ($CustomProblemScript) { $CustomProblemScript } else { $null }
+    CustomAllClearScript = if ($CustomAllClearScript) { $CustomAllClearScript } else { $null }
+    Timestamp = (Get-Date).ToString("yyyy-MM-dd HH:mm:ss")
+}
+$Config | ConvertTo-Json -Depth 3 | Out-File $ConfigPath -Encoding UTF8
+Write-Host "Configuration saved to $ConfigPath"
 
 if ($session) {
     # Remote Execution
@@ -505,10 +554,29 @@ if ($session) {
             if (Get-Command Start-MpScan -ErrorAction SilentlyContinue) {
                 # Check if Windows Defender Service is running
                 $DefenderService = Get-Service -Name WinDefend -ErrorAction SilentlyContinue
+                $wasDefenderDisabled = $false
+
+                if ($DefenderService -and $DefenderService.Status -ne "Running") {
+                    Write-Warning "Windows Defender Service ('WinDefend') is not running on remote machine. Attempting to start it..."
+                    try {
+                        Start-Service -Name WinDefend -ErrorAction Stop
+                        Start-Sleep -Seconds 5  # Give the service time to fully start
+                        $DefenderService = Get-Service -Name WinDefend -ErrorAction SilentlyContinue
+                        if ($DefenderService.Status -eq "Running") {
+                            Write-Host "Windows Defender Service started successfully." -ForegroundColor Green
+                            $wasDefenderDisabled = $true
+                        }
+                    }
+                    catch {
+                        Write-Warning "Failed to start Windows Defender Service on remote machine: $_"
+                        "Windows Defender Service could not be started on remote machine. Skipping scan." | Out-File $DefenderLogPath -Encoding UTF8
+                    }
+                }
+
                 if ($DefenderService -and $DefenderService.Status -eq "Running") {
                     Write-Host "Initiating Windows Defender scan as a background job on remote machine..."
                     $scanJob = Start-MpScan -ScanType FullScan -AsJob -ErrorAction Stop
-                    
+
                     # Monitor job status in a loop to get updates
                     $timeout = 3600 # 1 hour timeout
                     $sw = [System.Diagnostics.Stopwatch]::StartNew()
@@ -539,9 +607,21 @@ if ($session) {
                         Write-Warning "Windows Defender scan job failed on remote machine. Error details: $($job.ChildJobs[0].Host.UI.RawUI.GetBufferContents())"
                         "Windows Defender scan job failed on remote machine. Error details: $($job.ChildJobs[0].JobStateInfo.Reason)" | Out-File $DefenderLogPath -Append -Encoding UTF8
                     }
+
+                    # Disable Defender if it was disabled before
+                    if ($wasDefenderDisabled) {
+                        Write-Host "Stopping Windows Defender Service (was disabled before scan)..." -ForegroundColor Yellow
+                        try {
+                            Stop-Service -Name WinDefend -Force -ErrorAction Stop
+                            Write-Host "Windows Defender Service stopped successfully." -ForegroundColor Green
+                        }
+                        catch {
+                            Write-Warning "Failed to stop Windows Defender Service on remote machine: $_"
+                        }
+                    }
                 } else {
-                    Write-Warning "Windows Defender Service ('WinDefend') is not running on remote machine. Skipping scan."
-                    "Windows Defender Service ('WinDefend') is not running on remote machine. Skipping scan." | Out-File $DefenderLogPath -Encoding UTF8
+                    Write-Warning "Windows Defender Service ('WinDefend') is not available on remote machine. Skipping scan."
+                    "Windows Defender Service ('WinDefend') is not available on remote machine. Skipping scan." | Out-File $DefenderLogPath -Encoding UTF8
                 }
             } else {
                 Write-Warning "Start-MpScan cmdlet not found on remote machine. Ensure Windows Defender is enabled and the Defender module is available. Skipping scan."
@@ -870,10 +950,29 @@ if ($session) {
         if (Get-Command Start-MpScan -ErrorAction SilentlyContinue) {
             # Check if Windows Defender Service is running
             $DefenderService = Get-Service -Name WinDefend -ErrorAction SilentlyContinue
+            $wasDefenderDisabled = $false
+
+            if ($DefenderService -and $DefenderService.Status -ne "Running") {
+                Write-Warning "Windows Defender Service ('WinDefend') is not running. Attempting to start it..."
+                try {
+                    Start-Service -Name WinDefend -ErrorAction Stop
+                    Start-Sleep -Seconds 5  # Give the service time to fully start
+                    $DefenderService = Get-Service -Name WinDefend -ErrorAction SilentlyContinue
+                    if ($DefenderService.Status -eq "Running") {
+                        Write-Host "Windows Defender Service started successfully." -ForegroundColor Green
+                        $wasDefenderDisabled = $true
+                    }
+                }
+                catch {
+                    Write-Warning "Failed to start Windows Defender Service: $_"
+                    "Windows Defender Service could not be started. Skipping scan." | Out-File $DefenderLogPath -Encoding UTF8
+                }
+            }
+
             if ($DefenderService -and $DefenderService.Status -eq "Running") {
                 Write-Host "Initiating Windows Defender scan as a background job..."
                 $scanJob = Start-MpScan -ScanType FullScan -AsJob -ErrorAction Stop
-                
+
                 # Monitor job status in a loop to get updates
                 $timeout = 3600 # 1 hour timeout
                 $sw = [System.Diagnostics.Stopwatch]::StartNew()
@@ -904,9 +1003,21 @@ if ($session) {
                     Write-Warning "Windows Defender scan job failed. Error details: $($job.ChildJobs[0].Host.UI.RawUI.GetBufferContents())"
                     "Windows Defender scan job failed. Error details: $($job.ChildJobs[0].JobStateInfo.Reason)" | Out-File $DefenderLogPath -Append -Encoding UTF8
                 }
+
+                # Disable Defender if it was disabled before
+                if ($wasDefenderDisabled) {
+                    Write-Host "Stopping Windows Defender Service (was disabled before scan)..." -ForegroundColor Yellow
+                    try {
+                        Stop-Service -Name WinDefend -Force -ErrorAction Stop
+                        Write-Host "Windows Defender Service stopped successfully." -ForegroundColor Green
+                    }
+                    catch {
+                        Write-Warning "Failed to stop Windows Defender Service: $_"
+                    }
+                }
             } else {
-                Write-Warning "Windows Defender Service ('WinDefend') is not running. Skipping scan."
-                "Windows Defender Service ('WinDefend') is not running. Skipping scan." | Out-File $DefenderLogPath -Encoding UTF8
+                Write-Warning "Windows Defender Service ('WinDefend') is not available. Skipping scan."
+                "Windows Defender Service ('WinDefend') is not available. Skipping scan." | Out-File $DefenderLogPath -Encoding UTF8
             }
         } else {
             Write-Warning "Start-MpScan cmdlet not found. Ensure Windows Defender is enabled and the Defender module is available. Skipping scan."

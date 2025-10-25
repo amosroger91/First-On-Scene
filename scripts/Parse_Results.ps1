@@ -36,6 +36,11 @@ $PowerShellLogs = Get-Content (Join-Path $RawDataPath "powershell_logs.json") -E
 $FileMetadata = Get-Content (Join-Path $RawDataPath "file_metadata.json") -ErrorAction SilentlyContinue | ConvertFrom-Json
 $BrowserArtifacts = Get-Content (Join-Path $RawDataPath "browser_artifacts.json") -ErrorAction SilentlyContinue | ConvertFrom-Json
 
+# Antivirus scan results
+$DefenderScan = Get-Content (Join-Path $RawDataPath "defender_scan_results.txt") -Raw -ErrorAction SilentlyContinue
+$ClamAVScan = Get-Content (Join-Path $RawDataPath "clamav_scan_results.txt") -Raw -ErrorAction SilentlyContinue
+$RkillLog = Get-Content (Join-Path $RawDataPath "rkill_execution.log") -Raw -ErrorAction SilentlyContinue
+
 # --- 2. Triage Logic (Comprehensive Threat Detection) ---
 Write-Host "Applying triage logic..."
 
@@ -144,6 +149,63 @@ $SuspiciousTimestamps = $FileMetadata |
     } |
     Select-Object FilePath, CreationTime, LastWriteTime, Length -First 30
 
+## ANTIVIRUS SCAN RESULTS ##
+
+# Windows Defender: Parse for threats
+$DefenderThreats = @()
+if ($DefenderScan) {
+    if ($DefenderScan -match "(?ms)ThreatStatusID\s*:\s*(\d+)" -or
+        $DefenderScan -match "(?ms)Threat\s+detected" -or
+        $DefenderScan -match "(?ms)(\d+)\s+threat[s]?\s+detected") {
+        $DefenderThreats += @{
+            Scanner = "Windows Defender"
+            Status = "Threats Detected"
+            Details = $DefenderScan.Substring(0, [Math]::Min(500, $DefenderScan.Length))
+        }
+    }
+}
+
+# ClamAV: Parse for infected files
+$ClamAVThreats = @()
+if ($ClamAVScan) {
+    # ClamAV reports infected files as "file: FOUND"
+    $infectedMatches = [regex]::Matches($ClamAVScan, "(?m)^(.+?):\s+(.+?)\s+FOUND\s*$")
+    foreach ($match in $infectedMatches) {
+        $ClamAVThreats += @{
+            FilePath = $match.Groups[1].Value.Trim()
+            ThreatName = $match.Groups[2].Value.Trim()
+        }
+    }
+
+    # Also check summary line
+    if ($ClamAVScan -match "Infected files:\s+(\d+)") {
+        $infectedCount = [int]$matches[1]
+        if ($infectedCount -gt 0 -and $ClamAVThreats.Count -eq 0) {
+            # Summary indicates threats but we didn't parse them - include raw excerpt
+            $ClamAVThreats += @{
+                Scanner = "ClamAV"
+                Status = "Threats Detected ($infectedCount)"
+                Details = $ClamAVScan.Substring([Math]::Max(0, $ClamAVScan.Length - 500))
+            }
+        }
+    }
+}
+
+# Rkill: Parse for terminated processes
+$RkillTerminations = @()
+if ($RkillLog) {
+    $terminationMatches = [regex]::Matches($RkillLog, "(?m)^Terminated process:\s+(.+)$")
+    foreach ($match in $terminationMatches) {
+        $RkillTerminations += $match.Groups[1].Value.Trim()
+    }
+}
+
+## BROWSER ACTIVITY ANALYSIS ##
+
+# Browser artifacts collected but full analysis requires SQLite parsing
+# For now, just flag that browser history was collected
+$BrowserHistoryCollected = if ($BrowserArtifacts -and $BrowserArtifacts.Count -gt 0) { $true } else { $false }
+
 # --- 3. Output Structured JSON (`Info_Results.txt`) ---
 Write-Host "Generating structured output..."
 
@@ -158,6 +220,9 @@ $ServiceInstallsCount = if ($ServiceInstalls) { @($ServiceInstalls).Count } else
 $UserCreationsCount = if ($UserCreations) { @($UserCreations).Count } else { 0 }
 $TimestampsCount = if ($SuspiciousTimestamps) { @($SuspiciousTimestamps).Count } else { 0 }
 $ProcessCreationCount = if ($ProcessCreationEvents) { @($ProcessCreationEvents).Count } else { 0 }
+$DefenderThreatsCount = if ($DefenderThreats) { @($DefenderThreats).Count } else { 0 }
+$ClamAVThreatsCount = if ($ClamAVThreats) { @($ClamAVThreats).Count } else { 0 }
+$RkillTerminationsCount = if ($RkillTerminations) { @($RkillTerminations).Count } else { 0 }
 
 $InfoResults = @{
     "analysis_timestamp" = (Get-Date).ToString("yyyy-MM-dd HH:mm:ss")
@@ -172,6 +237,9 @@ $InfoResults = @{
         "service_installs" = $ServiceInstallsCount
         "user_creations" = $UserCreationsCount
         "suspicious_timestamps" = $TimestampsCount
+        "defender_threats" = $DefenderThreatsCount
+        "clamav_threats" = $ClamAVThreatsCount
+        "rkill_terminations" = $RkillTerminationsCount
     }
     "Triage_Indicators" = @{
         "Persistence" = @{
@@ -232,6 +300,28 @@ $InfoResults = @{
                 "details" = $SuspiciousTimestamps
             }
         }
+        "Antivirus_Scans" = @{
+            "windows_defender" = @{
+                "threats_found" = $DefenderThreatsCount -gt 0
+                "threat_count" = $DefenderThreatsCount
+                "details" = $DefenderThreats
+            }
+            "clamav" = @{
+                "threats_found" = $ClamAVThreatsCount -gt 0
+                "threat_count" = $ClamAVThreatsCount
+                "details" = $ClamAVThreats
+            }
+            "rkill" = @{
+                "processes_terminated" = $RkillTerminationsCount -gt 0
+                "termination_count" = $RkillTerminationsCount
+                "terminated_processes" = $RkillTerminations
+            }
+        }
+        "Browser_Activity" = @{
+            "history_collected" = $BrowserHistoryCollected
+            "artifact_count" = if ($BrowserArtifacts) { @($BrowserArtifacts).Count } else { 0 }
+            "note" = "Browser history databases collected for manual analysis (requires SQLite parsing)"
+        }
     }
 }
 
@@ -246,3 +336,6 @@ Write-Host "  - WMI Persistence Artifacts: $WMIEventCount"
 Write-Host "  - Suspicious Processes: $ProcessesCount"
 Write-Host "  - Suspicious Network Connections: $ConnectionsCount"
 Write-Host "  - Suspicious PowerShell Events: $PowerShellCount"
+Write-Host "  - Windows Defender Threats: $DefenderThreatsCount" -ForegroundColor $(if ($DefenderThreatsCount -gt 0) { "Red" } else { "Green" })
+Write-Host "  - ClamAV Threats: $ClamAVThreatsCount" -ForegroundColor $(if ($ClamAVThreatsCount -gt 0) { "Red" } else { "Green" })
+Write-Host "  - Rkill Terminations: $RkillTerminationsCount" -ForegroundColor $(if ($RkillTerminationsCount -gt 0) { "Yellow" } else { "Green" })
