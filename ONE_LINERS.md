@@ -47,21 +47,21 @@ $start = (Get-Date).AddDays(-7); $d=(Join-Path $env:TEMP "FOS_Run"); New-Item -I
 
 ---
 
-## Linux (Bash) - Coming in Phase 2
+## Linux (Bash)
 
-### Download and Run from GitHub (Future)
+### Download and Run from GitHub
 ```bash
 cd /tmp && curl -L https://github.com/amosroger91/First-On-Scene/archive/refs/heads/main.tar.gz | tar -xz && cd First-On-Scene-main && chmod +x scripts/nix/gather_info.sh && ./scripts/nix/gather_info.sh
 ```
 
-### Local Execution (Future)
+### Local Execution (Already Cloned)
 ```bash
 cd First-On-Scene && ./scripts/nix/gather_info.sh
 ```
 
 ### Remote Computer Scan via SSH (Future)
 ```bash
-cd /tmp && curl -L https://github.com/amosroger91/First-On-Scene/archive/refs/heads/main.tar.gz | tar -xz && cd First-On-Scene-main && chmod +x scripts/nix/gather_info.sh && ./scripts/nix/gather_info.sh --remote-host TARGET-HOST --ssh-user username
+# Remote scanning for Linux is planned for a future release.
 ```
 
 ---
