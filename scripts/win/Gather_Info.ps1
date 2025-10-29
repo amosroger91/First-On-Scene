@@ -97,7 +97,10 @@ param(
     [DateTime]$StartTime,
 
     [Parameter(Mandatory=$false)]
-    [DateTime]$EndTime
+    [DateTime]$EndTime,
+
+    [Parameter(Mandatory=$false)]
+    [switch]$RunClamAV = $false
 )
 
 # Check for administrator privileges
@@ -764,31 +767,35 @@ if ($session) {
         # --- 3. Antivirus Scans ---
 
         # ClamAV Scan
-        Write-Host "Starting ClamAV scan on remote machine..."
-        $ClamAVPath = (Get-Command clamscan.exe -ErrorAction SilentlyContinue).Path
-        if (-not $ClamAVPath) {
-            # Try common installation paths if not found in PATH
-            $ClamAVCommonPaths = @(
-                "C:\Program Files\ClamAV\clamscan.exe",
-                "C:\Program Files (x86)\ClamAV\clamscan.exe"
-            )
-            foreach ($path in $ClamAVCommonPaths) {
-                if (Test-Path $path) {
-                    $ClamAVPath = $path
-                    break
+        if ($using:RunClamAV) {
+            Write-Host "Starting ClamAV scan on remote machine..."
+            $ClamAVPath = (Get-Command clamscan.exe -ErrorAction SilentlyContinue).Path
+            if (-not $ClamAVPath) {
+                # Try common installation paths if not found in PATH
+                $ClamAVCommonPaths = @(
+                    "C:\Program Files\ClamAV\clamscan.exe",
+                    "C:\Program Files (x86)\ClamAV\clamscan.exe"
+                )
+                foreach ($path in $ClamAVCommonPaths) {
+                    if (Test-Path $path) {
+                        $ClamAVPath = $path
+                        break
+                    }
                 }
             }
-        }
-        if ($ClamAVPath) {
-            $ClamAVLogPath = Join-Path -Path $RemoteRawDataPath -ChildPath "clamav_scan_results.txt"
-            try {
-                & "${ClamAVPath}" -r "C:\" | Out-File $ClamAVLogPath -Encoding UTF8
-                Write-Host "ClamAV scan complete on remote machine. Results saved to ${ClamAVLogPath}"
-            } catch {
-                Write-Warning "ClamAV scan failed on remote machine: ${PSItem}"
+            if ($ClamAVPath) {
+                $ClamAVLogPath = Join-Path -Path $RemoteRawDataPath -ChildPath "clamav_scan_results.txt"
+                try {
+                    & "${ClamAVPath}" -r "C:\" | Out-File $ClamAVLogPath -Encoding UTF8
+                    Write-Host "ClamAV scan complete on remote machine. Results saved to ${ClamAVLogPath}"
+                } catch {
+                    Write-Warning "ClamAV scan failed on remote machine: ${PSItem}"
+                }
+            } else {
+                Write-Warning "ClamAV (clamscan.exe) not found on remote machine. Skipping scan."
             }
         } else {
-            Write-Warning "ClamAV (clamscan.exe) not found on remote machine. Skipping scan."
+            Write-Host "ClamAV scan SKIPPED on remote machine (use -RunClamAV flag to enable)." -ForegroundColor Cyan
         }
 
         # Windows Defender Scan
@@ -1352,31 +1359,35 @@ if ($session) {
     # --- 3. Antivirus Scans ---
 
     # ClamAV Scan
-    Write-Host "Starting ClamAV scan..."
-    $ClamAVPath = (Get-Command clamscan.exe -ErrorAction SilentlyContinue).Path
-    if (-not $ClamAVPath) {
-        # Try common installation paths if not found in PATH
-        $ClamAVCommonPaths = @(
-            "C:\Program Files\ClamAV\clamscan.exe",
-            "C:\Program Files (x86)\ClamAV\clamscan.exe"
-        )
-        foreach ($path in $ClamAVCommonPaths) {
-            if (Test-Path $path) {
-                $ClamAVPath = $path
-                break
+    if ($RunClamAV) {
+        Write-Host "Starting ClamAV scan..."
+        $ClamAVPath = (Get-Command clamscan.exe -ErrorAction SilentlyContinue).Path
+        if (-not $ClamAVPath) {
+            # Try common installation paths if not found in PATH
+            $ClamAVCommonPaths = @(
+                "C:\Program Files\ClamAV\clamscan.exe",
+                "C:\Program Files (x86)\ClamAV\clamscan.exe"
+            )
+            foreach ($path in $ClamAVCommonPaths) {
+                if (Test-Path $path) {
+                    $ClamAVPath = $path
+                    break
+                }
             }
         }
-    }
-    if ($ClamAVPath) {
-        $ClamAVLogPath = Join-Path -Path $RawDataPath -ChildPath "clamav_scan_results.txt"
-        try {
-            & "${ClamAVPath}" -r "C:\" | Out-File $ClamAVLogPath -Encoding UTF8
-            Write-Host "ClamAV scan complete. Results saved to ${ClamAVLogPath}"
-        } catch {
-            Write-Warning "ClamAV scan failed: ${PSItem}"
+        if ($ClamAVPath) {
+            $ClamAVLogPath = Join-Path -Path $RawDataPath -ChildPath "clamav_scan_results.txt"
+            try {
+                & "${ClamAVPath}" -r "C:\" | Out-File $ClamAVLogPath -Encoding UTF8
+                Write-Host "ClamAV scan complete. Results saved to ${ClamAVLogPath}"
+            } catch {
+                Write-Warning "ClamAV scan failed: ${PSItem}"
+            }
+        } else {
+            Write-Warning "ClamAV (clamscan.exe) not found. Skipping scan."
         }
     } else {
-        Write-Warning "ClamAV (clamscan.exe) not found. Skipping scan."
+        Write-Host "ClamAV scan SKIPPED (use -RunClamAV flag to enable)." -ForegroundColor Cyan
     }
 
     # Windows Defender Scan
@@ -1519,7 +1530,7 @@ Write-Host "========================================" -ForegroundColor Cyan
 $TokenScriptPath = Join-Path -Path $PSScriptRoot -ChildPath "Manage_API_Token.ps1"
 Write-Host "Checking for OpenRouter API token..."
 
-$apiToken = & $TokenScriptPath -Action "Prompt"
+$apiToken = & $TokenScriptPath -Action "Get"
 
 if ([string]::IsNullOrWhiteSpace($apiToken)) {
     Write-Error "No API token available. Cannot proceed with AI analysis."

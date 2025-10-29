@@ -16,6 +16,13 @@ param(
     [string]$ComputerName = "localhost"
 )
 
+function Remove-ToolCallSyntax {
+    param($Text)
+    if (-not $Text) { return "" }
+    # Regex to match <function=...></function> and <tool_code>...</tool_code> blocks
+    $Text -replace '(?s)<function=.*?>(.*?)</function>\s*</tool_call>', '$1' -replace '(?s)<tool_code>.*?</tool_code>', ''
+}
+
 $ErrorActionPreference = "Continue"
 
 # Paths
@@ -124,7 +131,7 @@ Write a concise 2-3 paragraph executive summary for non-technical stakeholders. 
 2. The overall risk level and business impact
 3. High-level next steps (investigation, containment, or clearance)
 
-Keep it professional and suitable for management review. Do not use markdown formatting.
+Keep it professional and suitable for management review. Do not use markdown formatting. Respond only with the requested text. Do not include any tool calls or markdown formatting for tool calls.
 "@
 
 $RecommendationsPrompt = @"
@@ -146,7 +153,7 @@ Provide 3-5 specific, actionable recommendations based on the findings. Format a
 If severity is Critical/High: focus on containment, forensic preservation, and escalation.
 If severity is Medium/Low: focus on monitoring, hardening, and preventive measures.
 
-Each recommendation should be 1-2 sentences and directly tied to the findings. Do not use markdown formatting, just plain text with bullet points (use "- " for bullets).
+Each recommendation should be 1-2 sentences and directly tied to the findings. Do not use markdown formatting, just plain text with bullet points (use "- " for bullets). Respond only with the requested text. Do not include any tool calls or markdown formatting for tool calls.
 "@
 
 # Call LLM for Executive Summary
@@ -156,7 +163,8 @@ $ExecutiveSummaryPrompt | Out-File -FilePath $tempSummaryFile -Encoding UTF8 -No
 Write-Host "  -> Generating Executive Summary..." -ForegroundColor Gray
 $ExecSummary = ""
 try {
-    $ExecSummary = cmd /c "type `"$tempSummaryFile`" | npx --yes @qwen-code/qwen-code --yolo -p `"`"" 2>&1
+    $ExecSummary = cmd /c "type `"$tempSummaryFile`" | npx --yes @qwen-code/qwen-code -p `"`"" 2>&1
+    $ExecSummary = Remove-ToolCallSyntax $ExecSummary
     $ExecSummary = $ExecSummary -replace '[\r\n]+$', ''  # Trim trailing newlines
     if ($ExecSummary -match "Error|Exception|Failed") {
         throw "LLM returned error: $ExecSummary"
@@ -173,7 +181,8 @@ $RecommendationsPrompt | Out-File -FilePath $tempRecommendationsFile -Encoding U
 Write-Host "  -> Generating Recommendations..." -ForegroundColor Gray
 $Recommendations = ""
 try {
-    $Recommendations = cmd /c "type `"$tempRecommendationsFile`" | npx --yes @qwen-code/qwen-code --yolo -p `"`"" 2>&1
+    $Recommendations = cmd /c "type `"$tempRecommendationsFile`" | npx --yes @qwen-code/qwen-code -p `"`"" 2>&1
+    $Recommendations = Remove-ToolCallSyntax $Recommendations
     $Recommendations = $Recommendations -replace '[\r\n]+$', ''
     if ($Recommendations -match "Error|Exception|Failed") {
         throw "LLM returned error: $Recommendations"
@@ -283,6 +292,13 @@ function Escape-HTML {
     return [System.Security.SecurityElement]::Escape($Text.ToString())
 }
 
+function Remove-ToolCallSyntax {
+    param($Text)
+    if (-not $Text) { return "" }
+    # Regex to match <function=...></function> and <tool_code>...</tool_code> blocks
+    $Text -replace '(?s)<function=.*?>(.*?)</function>\s*</tool_call>', '$1' -replace '(?s)<tool_code>.*?</tool_code>', ''
+}
+
 # Create HTML report
 $htmlReport = @"
 <!DOCTYPE html>
@@ -373,40 +389,4 @@ $htmlReport = @"
 $htmlReport | Out-File -FilePath $OutputPathHTML -Encoding UTF8
 Write-Host "HTML report created: $OutputPathHTML" -ForegroundColor Green
 
-# Convert HTML to DOCX using Word
-Write-Host "Converting to DOCX format..."
 
-try {
-    $Word = New-Object -ComObject Word.Application
-    $Word.Visible = $false
-
-    # Open HTML file
-    $Doc = $Word.Documents.Open($OutputPathHTML)
-
-    # Save as DOCX (16 = wdFormatDocumentDefault)
-    $missing = [Type]::Missing
-    $Doc.SaveAs($OutputPathDOCX, 16, $missing, $missing, $missing, $missing, $missing, $missing, $missing, $missing, $missing)
-
-    $Doc.Close()
-    $Word.Quit()
-
-    # Release COM objects
-    [System.Runtime.Interopservices.Marshal]::ReleaseComObject($Doc) | Out-Null
-    [System.Runtime.Interopservices.Marshal]::ReleaseComObject($Word) | Out-Null
-    [System.GC]::Collect()
-    [System.GC]::WaitForPendingFinalizers()
-
-    Write-Host "DOCX report generated successfully!" -ForegroundColor Green
-    Write-Host "Output: $OutputPathDOCX" -ForegroundColor Cyan
-
-    # Log completion
-    "$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss') :: Generate_Report.ps1: HTML and DOCX reports created" |
-        Out-File $StepsLog -Append -Encoding UTF8
-
-} catch {
-    Write-Warning "Failed to convert HTML to DOCX: $_"
-    Write-Host "HTML report is available at: $OutputPathHTML" -ForegroundColor Yellow
-    Write-Host "You can manually open it in Word and save as DOCX if needed." -ForegroundColor Yellow
-}
-
-Write-Host "`n=== DOCX Report Generation Complete ===" -ForegroundColor Cyan
