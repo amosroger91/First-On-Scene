@@ -1,6 +1,6 @@
 {
   "name": "first-on-scene",
-  "version": "3.0.0",
+  "version": "3.1.0",
   "description": "Free, open-source, CJIS-ready incident-response triage toolkit for MSPs. Deterministic engine, optional local-only AI, zero network egress.",
   "main": "dist/cli.js",
   "bin": {

@@ -12,6 +12,12 @@
     "operator": { "user": "MSP\\analyst", "host": "ANALYST01", "tool": "First-On-Scene/3.0.0" }
   },
   "artifacts": {
+    "remoteAccess": {
+      "tools": [
+        { "tool": "AnyDesk", "evidence": "process,installed", "detail": "AnyDesk", "authorized": false },
+        { "tool": "NinjaOne (NinjaRMM)", "evidence": "service", "detail": "NinjaRMMAgent", "authorized": true }
+      ]
+    },
     "persistence": {
       "registryRunKeys": [
         { "hive": "HKCU", "keyPath": "SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Run", "valueName": "Updater", "valueData": "C:\\Users\\bob\\AppData\\Roaming\\svchost.exe" }

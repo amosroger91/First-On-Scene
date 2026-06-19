@@ -14,6 +14,42 @@
 
 ---
 
+## 🚨 Suspect a machine is compromised? Run this one command.
+
+You've got NinjaOne / ScreenConnect on a box and think it might be popped. Run this **single,
+self-contained command** on that machine (locally, or paste it into your RMM / ScreenConnect
+run-command window). It needs **nothing installed**, makes **no internet calls** during analysis,
+and prints a clear verdict — and it will flag any remote-access software that you *didn't* put there.
+
+```powershell
+$p="$env:TEMP\Invoke-FosTriage.ps1"; iwr "https://raw.githubusercontent.com/amosroger91/First-On-Scene/main/deploy/standalone/Invoke-FosTriage.ps1" -OutFile $p -UseBasicParsing; & $p -ExpectedRemoteTools 'NinjaOne,ScreenConnect'
+```
+
+> List the remote-access tools you *expect* in `-ExpectedRemoteTools` (comma-separated) so your own
+> agents aren't flagged. Everything else — AnyDesk, TeamViewer, RustDesk, Splashtop, an unexpected
+> LabTech, etc. — gets called out as **UNAUTHORIZED**.
+
+It prints a console verdict like:
+
+```
+============================================================
+  FIRST-ON-SCENE  ::  PROBLEM_DETECTED (Incident)
+  HOST: WS-01    SCORE: 45    REASON: UNAUTHORIZED_REMOTE_ACCESS
+============================================================
+  Remote-access tools found:
+   [expected]     ScreenConnect / ConnectWise Control (process,service)
+   [UNAUTHORIZED] RustDesk (installed)
+============================================================
+  Report:   C:\ProgramData\FirstOnScene\cases\...\Incident_Report_*.html
+```
+
+It exits `0` (clear) / `10` (monitor) / `20` (incident) / `21` (breach) so your RMM can branch on it,
+and it seals a full evidence case folder (bundle + SHA-256 manifest + chain of custody). Air-gapped /
+CJIS? Pre-stage the single file instead of using the URL — see [air-gapped guide](docs/DEPLOYMENT_AIRGAPPED.md).
+The script lives at [`deploy/standalone/Invoke-FosTriage.ps1`](deploy/standalone/Invoke-FosTriage.ps1).
+
+---
+
 ## Why MSP pros keep this in the toolbox
 
 - **Decisive, not noisy.** A deterministic, MITRE ATT&CK-mapped rule engine produces a clear verdict and score — tuned to avoid the false positives that make triage tools cry wolf on healthy machines.

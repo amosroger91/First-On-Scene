@@ -34,6 +34,11 @@
           "type": "boolean",
           "description": "True when collection was strictly read-only (no rkill, no Defender toggling, no system modification). Default and recommended."
         },
+        "expectedRemoteTools": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Operator-declared sanctioned remote-access/RMM tools (allow-list). Tools found that do not match any entry are flagged."
+        },
         "operator": {
           "type": "object",
           "description": "Identity of the person/system that performed collection (CJIS 5.4 accountability).",
@@ -72,6 +77,24 @@
       "description": "Normalized forensic artifacts. Field names here are the selectors referenced by rules/detections.json.",
       "additionalProperties": true,
       "properties": {
+        "remoteAccess": {
+          "type": "object",
+          "description": "Remote-access / RMM software discovered on the host.",
+          "properties": {
+            "tools": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "tool": { "type": "string" },
+                  "evidence": { "type": "string", "description": "process | service | installed" },
+                  "detail": { "type": "string" },
+                  "authorized": { "type": "boolean", "description": "True if it matched the operator's expected list." }
+                }
+              }
+            }
+          }
+        },
         "persistence": {
           "type": "object",
           "properties": {

@@ -1,5 +1,21 @@
 # Changelog
 
+## 3.1.0 - Single-file "suspect a box is compromised" triage
+
+### Added
+- **`deploy/standalone/Invoke-FosTriage.ps1`** - a fully self-contained, single-file Windows
+  triage script (no dependencies, no external files, no internet for analysis). Built for the
+  "we have NinjaOne/ScreenConnect on this device and think it's compromised - run something now"
+  workflow: paste it into an RMM / ScreenConnect run-command window and get a console verdict.
+- **Unauthorized remote-access / RMM detection (MITRE T1219).** Collector inventories known
+  remote-access agents (AnyDesk, TeamViewer, ScreenConnect, NinjaOne, Atera, Splashtop, RustDesk,
+  VNC, LabTech, Kaseya, Datto, and more) from processes/services/installed programs. The
+  `-ExpectedRemoteTools` allow-list marks sanctioned agents; anything else is flagged
+  (`FOS-RAT-001`), expected ones shown as context (`FOS-RAT-002`). Wired into both analyzers.
+- **One-command README entry** for the suspected-compromise workflow.
+- `tools/Build-Standalone.ps1` keeps the standalone's embedded ruleset in sync with
+  `rules/detections.json` (single source of truth).
+
 ## 3.0.0 - CJIS-ready, MSP-grade rewrite
 
 ### Breaking

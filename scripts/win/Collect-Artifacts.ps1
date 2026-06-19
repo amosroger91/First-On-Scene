@@ -24,7 +24,8 @@ param(
     [string]$CaseDir,
     [datetime]$StartTime,
     [datetime]$EndTime,
-    [int]$MaxEvents = 1000
+    [int]$MaxEvents = 1000,
+    [string]$ExpectedRemoteTools = ''
 )
 
 $ErrorActionPreference = 'Stop'
@@ -201,6 +202,60 @@ try {
     } else { $defender.executed = $true }
 } catch { Add-CollErr 'defender' "Get-MpThreatDetection unavailable: $($_.Exception.Message)" }
 
+# --- Remote-access / RMM tool inventory (read-only) ---
+$RemoteToolDefs = @(
+    @{ tool='AnyDesk'; rx='anydesk' },
+    @{ tool='TeamViewer'; rx='teamviewer' },
+    @{ tool='ScreenConnect / ConnectWise Control'; rx='screenconnect|connectwise.?control' },
+    @{ tool='ConnectWise Automate (LabTech)'; rx='ltsvc|labtech|connectwise automate' },
+    @{ tool='NinjaOne (NinjaRMM)'; rx='ninjarmm|ninjaone' },
+    @{ tool='Atera'; rx='ateraagent|\batera\b' },
+    @{ tool='Splashtop'; rx='splashtop|srservice|srmanager' },
+    @{ tool='RustDesk'; rx='rustdesk' },
+    @{ tool='LogMeIn'; rx='logmein' },
+    @{ tool='GoTo / GoToAssist'; rx='gotoassist|gotoresolve|g2comm|logmeinrescue' },
+    @{ tool='VNC (Ultra/Tight/Real)'; rx='winvnc|tvnserver|vncserver|uvnc|realvnc|tightvnc' },
+    @{ tool='Ammyy Admin'; rx='ammyy|aa_v3' },
+    @{ tool='Remote Utilities'; rx='rutserv|rfusclient|remote utilities' },
+    @{ tool='DWAgent'; rx='dwagent' },
+    @{ tool='Supremo'; rx='supremo' },
+    @{ tool='Action1'; rx='action1' },
+    @{ tool='Syncro'; rx='syncro|kabuto' },
+    @{ tool='Datto RMM'; rx='cagservice|centrastage|datto rmm' },
+    @{ tool='Kaseya'; rx='kaseya|agentmon' },
+    @{ tool='BeyondTrust / Bomgar'; rx='bomgar|beyondtrust' },
+    @{ tool='Chrome Remote Desktop'; rx='remoting_host|chrome remote desktop|chromoting' },
+    @{ tool='ToDesk'; rx='todesk' },
+    @{ tool='Parsec'; rx='\bparsec' },
+    @{ tool='Quick Assist / Remote Assistance'; rx='quickassist|msra\.exe' }
+)
+$expectedTokens = @()
+if ($ExpectedRemoteTools) { $expectedTokens = $ExpectedRemoteTools -split '[,;]' | ForEach-Object { $_.Trim().ToLower() } | Where-Object { $_ } }
+$remoteTools = New-Object System.Collections.ArrayList
+try {
+    $installed = @()
+    foreach ($p in @('HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\*',
+                     'HKLM:\SOFTWARE\Wow6432Node\Microsoft\Windows\CurrentVersion\Uninstall\*',
+                     'HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\*')) {
+        $installed += Get-ItemProperty $p -ErrorAction SilentlyContinue | Where-Object { $_.DisplayName } | Select-Object -ExpandProperty DisplayName
+    }
+    $procNames = @($processes | ForEach-Object { $_.name })
+    $svcText   = @($services  | ForEach-Object { "$($_.name) $($_.displayName) $($_.pathName)" })
+    foreach ($def in $RemoteToolDefs) {
+        $ev = @()
+        if ($procNames | Where-Object { $_ -match $def.rx }) { $ev += 'process' }
+        if ($svcText   | Where-Object { $_ -match $def.rx }) { $ev += 'service' }
+        $instMatch = @($installed | Where-Object { $_ -match $def.rx })
+        if ($instMatch.Count -gt 0) { $ev += 'installed' }
+        if ($ev.Count -gt 0) {
+            $tl = $def.tool.ToLower()
+            $auth = $false
+            foreach ($tok in $expectedTokens) { if ($tl -like "*$tok*") { $auth = $true; break } }
+            [void]$remoteTools.Add([ordered]@{ tool=$def.tool; evidence=($ev -join ','); detail=([string]($instMatch | Select-Object -First 1)); authorized=$auth })
+        }
+    }
+} catch { Add-CollErr 'remoteAccess' $_.Exception.Message }
+
 # --- Assemble bundle ---
 $op = Get-FosOperator
 $timeRange = $null
@@ -221,11 +276,13 @@ $bundle = [ordered]@{
         collectorVersion = $collectorVersion
         executionMode = 'local'
         evidenceIntegrityMode = $true
+        expectedRemoteTools = @($expectedTokens)
         operator = $op
         timeRange = $timeRange
         errors = @($errors)
     }
     artifacts = [ordered]@{
+        remoteAccess = [ordered]@{ tools = @($remoteTools) }
         persistence = [ordered]@{
             registryRunKeys = @($runKeys)
             scheduledTasks  = @($tasks)

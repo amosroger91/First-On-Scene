@@ -306,6 +306,32 @@
       ],
       "rationale": "systemd units launching binaries from /tmp, /dev/shm, or hidden home paths are a strong Linux persistence indicator.",
       "falsePositive": "Uncommon for legitimate units. Investigate every hit."
+    },
+    {
+      "id": "FOS-RAT-001",
+      "name": "Unauthorized remote-access / RMM tool present",
+      "category": "Command and Control",
+      "mitre": { "tactic": "TA0011", "technique": "T1219" },
+      "type": "builtin",
+      "selector": "artifacts.remoteAccess.tools",
+      "severity": "high",
+      "weight": 9,
+      "reasonCode": "UNAUTHORIZED_REMOTE_ACCESS",
+      "rationale": "A remote-access or RMM agent that is NOT on the operator's expected list is a top initial-access and hands-on-keyboard indicator (e.g. attacker-installed AnyDesk, TeamViewer, or RustDesk).",
+      "falsePositive": "A legitimate tool the MSP forgot to declare. Re-run with -ExpectedRemoteTools listing your sanctioned agents (e.g. 'NinjaOne,ScreenConnect')."
+    },
+    {
+      "id": "FOS-RAT-002",
+      "name": "Expected remote-access tool present (context)",
+      "category": "Remote Access",
+      "mitre": { "tactic": "TA0011", "technique": "T1219" },
+      "type": "builtin",
+      "selector": "artifacts.remoteAccess.tools",
+      "severity": "info",
+      "weight": 0,
+      "reasonCode": "EXPECTED_REMOTE_ACCESS",
+      "rationale": "Sanctioned remote-access / RMM agents found on the host, shown for context. Does not affect the score.",
+      "falsePositive": "Informational only."
     }
   ]
 }

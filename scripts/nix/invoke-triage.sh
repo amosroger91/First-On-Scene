@@ -68,6 +68,10 @@ fos_coc_add "$CASEDIR" "ANALYSIS_START" "ruleset=$("$JQ" -r '.rulesetVersion' "$
     elif $id=="FOS-AV-002" then
       (if (($bundle.artifacts.antivirusScans.clamavScan.threatsFound // 0) > 0)
        then [{scanner:"ClamAV", threats:($bundle.artifacts.antivirusScans.clamavScan.threats)}] else [] end)
+    elif $id=="FOS-RAT-001" then
+      [ ($bundle.artifacts.remoteAccess.tools // [])[] | select(.authorized==false) ]
+    elif $id=="FOS-RAT-002" then
+      [ ($bundle.artifacts.remoteAccess.tools // [])[] | select(.authorized==true) ]
     else [] end;
   {info:0,low:1,medium:2,high:3,critical:4} as $sevrank |
   {info:1,low:1,medium:2,high:3,critical:3} as $cap |

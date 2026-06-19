@@ -33,6 +33,7 @@ param(
     [string]$OllamaEndpoint = 'http://127.0.0.1:11434',
     [string]$CustomProblemScript,
     [string]$CustomAllClearScript,
+    [string]$ExpectedRemoteTools = '',
     [switch]$NoAction
 )
 $ErrorActionPreference = 'Stop'
@@ -46,6 +47,7 @@ try {
         if ($CaseDir)   { $collectArgs['CaseDir']   = $CaseDir }
         if ($StartTime) { $collectArgs['StartTime'] = $StartTime }
         if ($EndTime)   { $collectArgs['EndTime']   = $EndTime }
+        if ($ExpectedRemoteTools) { $collectArgs['ExpectedRemoteTools'] = $ExpectedRemoteTools }
         $BundlePath = & (Join-Path $here 'Collect-Artifacts.ps1') @collectArgs | Select-Object -Last 1
         if (-not $CaseDir) { $CaseDir = Split-Path -Parent $BundlePath }
     } else {

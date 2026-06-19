@@ -4,7 +4,7 @@
 
 # Allow overriding the jq binary (e.g. for testing): JQ=/path/to/jq
 JQ="${JQ:-jq}"
-FOS_ENGINE_VERSION="3.0.0"
+FOS_ENGINE_VERSION="3.1.0"
 
 fos_utc_now() { date -u +"%Y-%m-%dT%H:%M:%S.000Z"; }
 

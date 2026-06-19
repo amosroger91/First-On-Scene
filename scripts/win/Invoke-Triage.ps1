@@ -126,6 +126,14 @@ function Invoke-FosBuiltin {
             if ($s -and ([int]$s.threatsFound -gt 0)) { return @([pscustomobject]@{ scanner='ClamAV'; threatsFound=$s.threatsFound; threats=$s.threats }) }
             return @()
         }
+        'FOS-RAT-001' {
+            $t = @(Resolve-FosPath $Bundle 'artifacts.remoteAccess.tools')
+            return @($t | Where-Object { $_ -and ($_.authorized -eq $false) })
+        }
+        'FOS-RAT-002' {
+            $t = @(Resolve-FosPath $Bundle 'artifacts.remoteAccess.tools')
+            return @($t | Where-Object { $_ -and ($_.authorized -eq $true) })
+        }
         default { return @() }
     }
 }
