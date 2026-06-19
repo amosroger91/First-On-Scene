@@ -1,5 +1,5 @@
 {
-  "rulesetVersion": "1.1.0",
+  "rulesetVersion": "1.2.0",
   "description": "First-On-Scene deterministic detection ruleset. Each rule maps to a MITRE ATT&CK technique. The analyzer evaluates these generically against an artifact bundle. Authoring guide: docs/RULES.md.",
   "scoring": {
     "thresholds": { "monitor": 10, "problem": 30, "breach": 60 },
@@ -569,6 +569,40 @@
       ],
       "rationale": "A running kernel driver that is unsigned and loaded from outside system32\\drivers is a rootkit / bring-your-own-vulnerable-driver indicator (-Deep scan).",
       "falsePositive": "Rare. A handful of OEM/storage drivers load from vendor paths and may report as catalog-signed rather than Valid. Verify the driver vendor and SHA-256."
+    },
+    {
+      "id": "FOS-NIX-003",
+      "name": "Autostart / launchd entry runs from a suspicious path",
+      "category": "Persistence",
+      "mitre": { "tactic": "TA0003", "technique": "T1543.001" },
+      "type": "match",
+      "selector": "artifacts.persistence.autostartFiles",
+      "match": "any",
+      "severity": "high",
+      "weight": 7,
+      "reasonCode": "PERSISTENCE_AUTOSTART",
+      "conditions": [
+        { "field": "command", "op": "regexI", "value": "(/tmp/|/private/tmp/|/var/tmp/|/dev/shm/|/Users/Shared/|/Users/[^/]+/\\.|/home/[^/]+/\\.)|((curl|wget).*(\\|\\s*(ba)?sh))|base64\\s+-d|/dev/tcp/|osascript.*-e" }
+      ],
+      "rationale": "A macOS LaunchAgent/LaunchDaemon or Linux autostart entry whose program lives in a world-writable/temp/hidden path - or that pipes a download into a shell - is a strong cross-platform persistence indicator (macOS launchd is the dominant native persistence surface).",
+      "falsePositive": "A few legitimate per-user agents live under a user's home. Confirm the target binary's publisher/signature and that the plist was installed by sanctioned software."
+    },
+    {
+      "id": "FOS-MAC-001",
+      "name": "macOS system protection disabled (SIP / Gatekeeper)",
+      "category": "Defense Evasion",
+      "mitre": { "tactic": "TA0005", "technique": "T1562.001" },
+      "type": "match",
+      "selector": "artifacts.securityPosture.macControls",
+      "match": "all",
+      "severity": "medium",
+      "weight": 5,
+      "reasonCode": "MACOS_PROTECTION_DISABLED",
+      "conditions": [
+        { "field": "control", "op": "exists" }
+      ],
+      "rationale": "System Integrity Protection or Gatekeeper being OFF removes a core macOS defense (kernel/file protection or unsigned-code blocking) and is a common attacker or pre-attack action to impair defenses. The collector only records a control here when it is disabled.",
+      "falsePositive": "Developers sometimes disable Gatekeeper; SIP-disabled is rare on a managed endpoint. Confirm the change was intentional and policy-approved."
     }
   ]
 }

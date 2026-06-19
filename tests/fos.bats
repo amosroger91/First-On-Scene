@@ -40,6 +40,23 @@ run_triage() { # $1 = fixture
   rm -rf "$CD"
 }
 
+@test "macOS clean bundle -> ALL_CLEAR / exit 0" {
+  run_triage macos_clean_bundle.json
+  [ "$EXIT" -eq 0 ]
+  [ "$VERDICT" = "ALL_CLEAR" ]
+  rm -rf "$CD"
+}
+
+@test "macOS infected bundle -> PROBLEM_DETECTED (launchd + SIP-off + deleted image + hosts/listener)" {
+  run_triage macos_infected_bundle.json
+  [ "$EXIT" -ge 20 ]
+  [ "$VERDICT" = "PROBLEM_DETECTED" ]
+  # the macOS-native rules must be among the detections
+  "$JQ" -e '.findings|map(.ruleId)|index("FOS-NIX-003")' "$CD/findings.json" >/dev/null
+  "$JQ" -e '.findings|map(.ruleId)|index("FOS-MAC-001")' "$CD/findings.json" >/dev/null
+  rm -rf "$CD"
+}
+
 @test "chain of custody detects tampering" {
   CD="$(mktemp -d)"
   fos_coc_add "$CD" "A" "one" >/dev/null

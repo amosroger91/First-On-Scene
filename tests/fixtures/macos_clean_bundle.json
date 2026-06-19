@@ -1,0 +1,42 @@
+{
+  "schemaVersion": "3.0.0",
+  "metadata": {
+    "caseId": "FOS-20260619-MACMINI-cc33dd",
+    "collectionTimestampUtc": "2026-06-19T12:00:00.000Z",
+    "targetHostname": "macmini",
+    "platform": "darwin",
+    "osVersion": "macOS 14.5 (arm64)",
+    "collectorVersion": "3.4.0",
+    "executionMode": "local",
+    "evidenceIntegrityMode": true,
+    "expectedRemoteTools": ["ninjaone"],
+    "operator": { "user": "tech@MSP", "host": "ANALYST01", "tool": "First-On-Scene/3.4.0" }
+  },
+  "artifacts": {
+    "remoteAccess": { "tools": [ { "tool": "NinjaOne (NinjaRMM)", "evidence": "process", "detail": "NinjaOne (NinjaRMM)", "authorized": true } ] },
+    "securityPosture": { "defender": { "available": false }, "macos": { "sip": "enabled", "gatekeeper": "enabled", "fileVault": "on" }, "macControls": [] },
+    "accessControl": { "localAdmins": ["alice"], "rdpEnabled": false, "shares": [] },
+    "defenseEvasion": { "logClearEvents": [] },
+    "persistence": {
+      "cronJobs": [],
+      "systemdServices": [],
+      "autostartFiles": [ { "path": "/Library/LaunchAgents/com.apple.update.plist", "command": "/usr/local/bin/update-agent" } ],
+      "registryRunKeys": [], "scheduledTasks": [], "services": [], "asep": [],
+      "wmiEventSubscriptions": { "eventFilters": [], "eventConsumers": [], "filterBindings": [] }
+    },
+    "execution": {
+      "processes": [ { "processId": 501, "name": "Finder", "executablePath": "/System/Library/CoreServices/Finder.app/Contents/MacOS/Finder", "commandLine": "/System/Library/CoreServices/Finder.app/Contents/MacOS/Finder", "parentProcessId": 1, "user": "alice", "signatureStatus": "Valid", "signer": "Software Signing", "sha256": "", "imageDeleted": false } ],
+      "processCreationEvents": [], "prefetch": [], "injectedModules": [], "drivers": []
+    },
+    "network": {
+      "connections": [ { "protocol": "TCP", "state": "ESTABLISHED", "localAddress": "192.168.1.40", "localPort": 51022, "remoteAddress": "17.253.144.10", "remotePort": 443, "processId": 320, "processName": "apsd" } ],
+      "listeners": [ { "protocol": "TCP", "localAddress": "127.0.0.1", "localPort": 631, "processId": 200, "processName": "cupsd" } ],
+      "dnsCache": [],
+      "hostsFileEntries": [ { "ipAddress": "127.0.0.1", "hostnames": "localhost", "raw": "127.0.0.1 localhost" } ]
+    },
+    "credentialAccess": { "logonEvents": [], "privilegeEscalationEvents": [], "userCreationEvents": [], "serviceInstallEvents": [] },
+    "fileSystem": { "fileMetadata": [ { "fileName": "/Users/alice/Documents/notes.txt", "size": 1024, "permissions": "-rw-r--r--", "uid": 501, "gid": 20, "modified": "2026-06-18T10:00:00.000Z", "accessed": "2026-06-19T09:00:00.000Z", "created": "2026-06-10T10:00:00.000Z" } ], "browserArtifacts": [] },
+    "powerShellActivity": { "scriptBlockLogs": [] },
+    "antivirusScans": { "defenderScan": { "executed": false, "threatsFound": 0, "threats": [] }, "clamavScan": { "executed": false, "threatsFound": 0, "threats": [] } }
+  }
+}

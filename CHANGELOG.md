@@ -28,10 +28,36 @@
 - The **standalone report + console** gain the same Security posture & network panel, hosts-file
   redirect callouts, firewall line, and the Collection coverage banner.
 
+### Added (macOS-native collection, `scripts/nix/collect-artifacts.sh`)
+- The collector now gathers **macOS-native artifacts** instead of merely labelling the host `darwin`
+  while running Linux-only commands. Branched per-OS (bash 3.2 safe, the stock macOS shell):
+  - **Persistence**: `launchd` LaunchDaemons/LaunchAgents (system + per-user) parsed via `plutil`,
+    plus `cron` (incl. `/usr/lib/cron/tabs`) -> `persistence.autostartFiles`.
+  - **Processes**: `ps` + **`codesign`** signature status/authority + (`-Deep`) `shasum`, and the
+    deleted-on-disk-image flag (`FOS-EXE-004`).
+  - **Network**: `lsof -i` -> established `connections` **and** `listeners`.
+  - **Logons**: `last`. **Admins**: `dscl . admin group`. **Remote access**: SSH remote-login +
+    ARD/Screen Sharing -> `accessControl`. **Shares**: `sharing -l`.
+  - **Security posture**: `csrutil` (SIP), `spctl` (Gatekeeper), `fdesetup` (FileVault) ->
+    `securityPosture.macos` (context) + `securityPosture.macControls` (disabled controls only).
+  - **File MACE**: BSD `stat -f` (incl. birth time) so timestomping/ransom-note rules work.
+  - **RMM inventory** now also scans `/Applications` and launchd labels; adds Apple Remote Desktop.
+- **Linux network parity**: the Linux branch now also emits `network.listeners` (`ss -ltunp`) and
+  both branches emit `network.hostsFileEntries` (parsed `/etc/hosts`), so the new `FOS-NET-003/004`
+  fire cross-platform, not Windows-only.
+
+### Added (rules, `rules/detections.json` -> ruleset `1.2.0`)
+- **FOS-NIX-003** macOS LaunchAgent/LaunchDaemon (or Linux autostart) program running from a
+  world-writable/temp/hidden path, or piping a download into a shell (high).
+- **FOS-MAC-001** macOS SIP or Gatekeeper disabled (medium; anomaly-only - the collector records a
+  control under `macControls` solely when it is off).
+
 ### Changed
-- Engine/standalone version bumped to `3.5.0`. New checks are Windows-only context/detections and
-  do not regress Linux verdicts; informational signals (remote access, posture, coverage) never
-  affect the score.
+- Engine/standalone version bumped to `3.5.0`. Windows-specific checks (firewall, drivers) remain
+  Windows-only; the network/hosts checks and the macOS posture/persistence checks are now
+  cross-platform. Informational signals (remote access, posture, coverage) never affect the score,
+  and the Windows clean/infected verdict parity is preserved (`FOS-NIX-003`/`FOS-MAC-001` use
+  *nix-only selectors absent from Windows bundles).
 
 ## 3.4.0 - Linux/macOS collector reaches parity with Windows
 
