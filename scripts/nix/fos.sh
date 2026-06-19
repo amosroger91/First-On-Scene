@@ -9,6 +9,7 @@ ROOT="$(cd "$HERE/../.." && pwd)"
 MODE="full"; CASEDIR=""; BUNDLE=""; BRAND="First-On-Scene"
 ENABLE_AI=0; OLLAMA_MODEL="llama3.1:8b"; OLLAMA_ENDPOINT="http://127.0.0.1:11434"
 CUSTOM_PROBLEM=""; CUSTOM_CLEAR=""; NOACTION=0
+EXPECTED_TOOLS=""; DEEP=0; MAX_EVENTS=""
 
 while [ "$#" -gt 0 ]; do case "$1" in
   --mode) MODE="$2"; shift 2;;
@@ -20,6 +21,9 @@ while [ "$#" -gt 0 ]; do case "$1" in
   --ollama-endpoint) OLLAMA_ENDPOINT="$2"; shift 2;;
   --custom-problem) CUSTOM_PROBLEM="$2"; shift 2;;
   --custom-all-clear) CUSTOM_CLEAR="$2"; shift 2;;
+  --expected-remote-tools) EXPECTED_TOOLS="$2"; shift 2;;
+  --deep) DEEP=1; shift;;
+  --max-events) MAX_EVENTS="$2"; shift 2;;
   --no-action) NOACTION=1; shift;;
   *) echo "Unknown option: $1" >&2; exit 1;;
 esac; done
@@ -28,7 +32,12 @@ command -v "$JQ" >/dev/null 2>&1 || { echo "FATAL: jq is required."; exit 1; }
 
 # 1. COLLECT
 if [ "$MODE" != "analyze" ]; then
-  BUNDLE="$(bash "$HERE/collect-artifacts.sh" "$CASEDIR" | tail -n1)"
+  COLLECT_ARGS=()
+  [ -n "$CASEDIR" ]        && COLLECT_ARGS+=(--case-dir "$CASEDIR")
+  [ -n "$EXPECTED_TOOLS" ] && COLLECT_ARGS+=(--expected-remote-tools "$EXPECTED_TOOLS")
+  [ -n "$MAX_EVENTS" ]     && COLLECT_ARGS+=(--max-events "$MAX_EVENTS")
+  [ "$DEEP" -eq 1 ]        && COLLECT_ARGS+=(--deep)
+  BUNDLE="$(bash "$HERE/collect-artifacts.sh" "${COLLECT_ARGS[@]}" | tail -n1)"
   [ -z "$CASEDIR" ] && CASEDIR="$(dirname "$BUNDLE")"
 else
   [ -z "$BUNDLE" ] && { echo "analyze mode requires --bundle"; exit 1; }

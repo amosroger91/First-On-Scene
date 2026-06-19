@@ -104,7 +104,7 @@ fos_coc_add "$CASEDIR" "ANALYSIS_START" "ruleset=$("$JQ" -r '.rulesetVersion' "$
   (if $verdict=="ALL_CLEAR" then 0 elif $verdict=="MONITOR" then 10 elif $isBreach then 21 else 20 end) as $exitCode |
   (($findings|map($sevrank[.severity])|max) // 0) as $maxrankNum |
   (($sevrank|to_entries|map(select(.value==$maxrankNum))|.[0].key) // "info") as $maxSev |
-  (($findings|sort_by(-.contribution)|.[0].reasonCode) // "NO_FINDINGS") as $reasonCode |
+  (($findings|sort_by(.weight * ([.evidenceCount,3]|min))|last|.reasonCode) // "NO_FINDINGS") as $reasonCode |
   ($findings|reduce .[] as $f ({}; .[$f.category] = ((.[$f.category]//0) + $f.evidenceCount))) as $summary |
   {
     caseId: $bundle.metadata.caseId,
@@ -143,8 +143,9 @@ EXITCODE="$("$JQ" -r '.exitCode' "$FINDINGS")"
   echo "| **Verdict** | **$VERDICT** |"
   echo "| Classification | $CLASS |"
   echo "| Severity | $("$JQ" -r '.severity' "$FINDINGS") |"
-  echo "| Score | $SCORE |"
+  echo "| Score | $SCORE (monitor=$("$JQ" -r '.thresholds.monitor' "$FINDINGS"), problem=$("$JQ" -r '.thresholds.problem' "$FINDINGS"), breach=$("$JQ" -r '.thresholds.breach' "$FINDINGS")) |"
   echo "| Reason Code | $("$JQ" -r '.reasonCode' "$FINDINGS") |"
+  echo "| Ruleset | $("$JQ" -r '.rulesetVersion' "$FINDINGS") - Engine $("$JQ" -r '.engineVersion' "$FINDINGS") |"
   echo ""
   if [ "$NF" -eq 0 ]; then
     echo "_No detections fired. System appears clean based on collected artifacts._"
