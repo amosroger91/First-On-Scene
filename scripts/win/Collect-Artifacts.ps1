@@ -341,6 +341,70 @@ if ($Deep) {
     } catch { Add-CollErr 'injectedModules' $_.Exception.Message }
 }
 
+# --- Network state: listeners (TCP+UDP), DNS client cache, hosts file (read-only, local) ---
+$listeners = New-Object System.Collections.ArrayList
+try {
+    $procMap2 = @{}; Get-Process -ErrorAction SilentlyContinue | ForEach-Object { $procMap2[$_.Id] = $_.ProcessName }
+    foreach ($l in (Get-NetTCPConnection -State Listen -ErrorAction SilentlyContinue)) {
+        [void]$listeners.Add([ordered]@{ protocol='TCP'; localAddress=[string]$l.LocalAddress; localPort=[int]$l.LocalPort; processId=[int]$l.OwningProcess; processName=[string]$procMap2[[int]$l.OwningProcess] })
+    }
+    foreach ($u in (Get-NetUDPEndpoint -ErrorAction SilentlyContinue)) {
+        [void]$listeners.Add([ordered]@{ protocol='UDP'; localAddress=[string]$u.LocalAddress; localPort=[int]$u.LocalPort; processId=[int]$u.OwningProcess; processName=[string]$procMap2[[int]$u.OwningProcess] })
+    }
+} catch { Add-CollErr 'listeners' $_.Exception.Message }
+
+$dnsCache = New-Object System.Collections.ArrayList
+try {
+    foreach ($d in (Get-DnsClientCache -ErrorAction SilentlyContinue | Select-Object -First $MaxEvents)) {
+        [void]$dnsCache.Add([ordered]@{ entry=[string]$d.Entry; name=[string]$d.Name; data=[string]$d.Data; type=[string]$d.Type; ttl=[int]$d.TimeToLive })
+    }
+} catch { Add-CollErr 'dnsCache' $_.Exception.Message }
+
+$hostsEntries = New-Object System.Collections.ArrayList
+try {
+    $hostsPath = "$env:windir\System32\drivers\etc\hosts"
+    if (Test-Path -LiteralPath $hostsPath) {
+        foreach ($line in (Get-Content -LiteralPath $hostsPath -ErrorAction SilentlyContinue)) {
+            $t = $line.Trim()
+            if (-not $t -or $t.StartsWith('#')) { continue }
+            $parts = $t -split '\s+'
+            if ($parts.Count -ge 2) {
+                [void]$hostsEntries.Add([ordered]@{ ipAddress=$parts[0]; hostnames=(($parts[1..($parts.Count-1)] | Where-Object { $_ -and -not $_.StartsWith('#') }) -join ' '); raw=$t })
+            }
+        }
+    }
+} catch { Add-CollErr 'hostsFile' $_.Exception.Message }
+
+# --- Security posture: Windows Firewall profiles (read-only) ---
+$firewall = [ordered]@{ available=$false; profiles=@() }
+try {
+    $fwp = @(Get-NetFirewallProfile -ErrorAction Stop)
+    if ($fwp.Count -gt 0) {
+        $firewall.available = $true
+        $firewall.profiles = @($fwp | ForEach-Object { [ordered]@{ name=[string]$_.Name; enabled=[bool]$_.Enabled; defaultInboundAction=[string]$_.DefaultInboundAction; defaultOutboundAction=[string]$_.DefaultOutboundAction } })
+    }
+} catch { Add-CollErr 'firewall' "Firewall profile state unavailable: $($_.Exception.Message)" }
+
+# --- Deep-mode: running kernel drivers with signature status ---
+$drivers = New-Object System.Collections.ArrayList
+if ($Deep) {
+    try {
+        $drvSig = @{}
+        foreach ($drv in (Get-CimInstance Win32_SystemDriver -ErrorAction SilentlyContinue | Where-Object { $_.State -eq 'Running' })) {
+            $dp = [string]$drv.PathName -replace '^\\\?\?\\', '' -replace '^\\SystemRoot\\', "$env:windir\"
+            $sg = ''; $sn = ''
+            if ($dp -match '^[A-Za-z]:\\' -and (Test-Path -LiteralPath $dp)) {
+                if (-not $drvSig.ContainsKey($dp)) {
+                    try { $s = Get-AuthenticodeSignature -LiteralPath $dp -ErrorAction SilentlyContinue; if ($s) { $sg = [string]$s.Status; if ($s.SignerCertificate) { $sn = $s.SignerCertificate.Subject } } } catch {}
+                    $drvSig[$dp] = @{ status=$sg; signer=$sn }
+                }
+                $sg = $drvSig[$dp].status; $sn = $drvSig[$dp].signer
+            }
+            [void]$drivers.Add([ordered]@{ name=[string]$drv.Name; displayName=[string]$drv.DisplayName; pathName=$dp; state=[string]$drv.State; startMode=[string]$drv.StartMode; signatureStatus=$sg; signer=$sn })
+        }
+    } catch { Add-CollErr 'drivers' $_.Exception.Message }
+}
+
 # --- Assemble bundle ---
 $op = Get-FosOperator
 $timeRange = $null
@@ -368,7 +432,7 @@ $bundle = [ordered]@{
     }
     artifacts = [ordered]@{
         remoteAccess = [ordered]@{ tools = @($remoteTools) }
-        securityPosture = [ordered]@{ defender = $defenderPosture }
+        securityPosture = [ordered]@{ defender = $defenderPosture; firewall = $firewall }
         accessControl = $accessControl
         defenseEvasion = [ordered]@{ logClearEvents = @($logClear) }
         persistence = [ordered]@{
@@ -383,8 +447,9 @@ $bundle = [ordered]@{
             processCreationEvents = @()
             prefetch = @($prefetch)
             injectedModules = @($injectedModules)
+            drivers = @($drivers)
         }
-        network = [ordered]@{ connections = @($connections) }
+        network = [ordered]@{ connections = @($connections); listeners = @($listeners); dnsCache = @($dnsCache); hostsFileEntries = @($hostsEntries) }
         credentialAccess = [ordered]@{
             logonEvents = @($logonEvents)
             privilegeEscalationEvents = @($privEsc)

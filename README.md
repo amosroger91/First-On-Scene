@@ -33,11 +33,12 @@ $p="$env:TEMP\Invoke-FosTriage.ps1"; iwr "https://raw.githubusercontent.com/amos
 > so you can eyeball it and confirm it's one you installed. The verdict is decided by the actual
 > attack indicators below — not by which remote tools are present.
 
-By default it runs a fast pass that also checks **Defender health/tamper state**, **code signatures
-+ SHA-256 of every running process**, **autostart hijacks** (IFEO / AppInit / Winlogon / sticky-keys
-backdoors), and **log-clear events**. Add **`-Deep`** for Prefetch execution evidence and a
-possible-injection scan (unsigned modules loaded into running processes) — a minute or two more, still
-no dependencies. (Run as Administrator/SYSTEM for full coverage.)
+By default it runs a fast pass that also checks **Defender health/tamper state**, **Windows Firewall
+posture**, **code signatures + SHA-256 of every running process**, **autostart hijacks** (IFEO /
+AppInit / Winlogon / sticky-keys backdoors), **network state** (listening ports, DNS cache, hosts-file
+redirects), and **log-clear events**. Add **`-Deep`** for Prefetch execution evidence, a
+possible-injection scan (unsigned modules loaded into running processes), and a kernel-driver
+signature scan — a minute or two more, still no dependencies. (Run as Administrator/SYSTEM for full coverage.)
 
 It prints a console verdict like:
 
@@ -158,13 +159,13 @@ A fast, **read-only, live** pass — designed to answer "is this box compromised
 - **Persistence** — Run/RunOnce keys, scheduled tasks, services, WMI event subscriptions, and high-value **ASEP hijacks**: IFEO debuggers, AppInit_DLLs, Winlogon Shell/Userinit, and accessibility / sticky-keys backdoors.
 - **Execution** — running processes with **Authenticode signature + SHA-256**; unsigned binaries from user/temp paths, processes whose on-disk image was deleted, and Office→LOLBin trees.
 - **Remote access / RMM** — inventories AnyDesk, TeamViewer, ScreenConnect, NinjaOne, Atera, Splashtop, RustDesk, VNC, LabTech, Kaseya, Datto and more. **Informational only — never affects the verdict** (MSPs run RMMs by design); anything not in your `-ExpectedRemoteTools` allow-list is surfaced as `[undeclared]` for a quick eyeball.
-- **Security posture** — Microsoft Defender real-time/tamper state and configured exclusions.
-- **Network** — connections to high-risk C2 ports and external RDP/SMB exposure.
+- **Security posture** — Microsoft Defender real-time/tamper state and configured exclusions, plus **Windows Firewall** profile state (Domain/Private/Public).
+- **Network** — connections to high-risk C2 ports and external RDP/SMB exposure, **listening TCP/UDP ports** with owning process (bind-shell detection), the local **DNS client cache**, and **hosts-file redirects** to non-loopback addresses.
 - **Credential access** — privileged + service-logon correlation, new local accounts.
 - **Defense evasion** — obfuscated/download-cradle PowerShell, timestomping, **Security/System log-clear** events.
 - **Malware** — on-box AV detections and ransom-note indicators.
 
-**`-Deep` pass** (a minute or two more, still zero dependencies): Prefetch execution evidence + a possible-injection scan (unsigned modules loaded into running processes).
+**`-Deep` pass** (a minute or two more, still zero dependencies): Prefetch execution evidence, a possible-injection scan (unsigned modules loaded into running processes), and a **kernel driver signature scan** (unsigned drivers loaded from non-standard paths).
 
 **The honest ceiling:** everything above is live OS-level, so a kernel rootkit can still hide from it. The deepest layers — **full memory image (Volatility), disk imaging / $MFT / super-timeline, and firmware/UEFI** — defeat that by analyzing off the box, but they're a heavy, offline DFIR job and deliberately *not* part of the fast triage. First-On-Scene's role is to make the live call confidently and tell you when to escalate to that.
 

@@ -110,6 +110,25 @@
                 "exclusionExtensions": { "type": "array", "items": { "type": "string" } },
                 "exclusionProcesses": { "type": "array", "items": { "type": "string" } }
               }
+            },
+            "firewall": {
+              "type": "object",
+              "description": "Windows Firewall profile state (read-only).",
+              "properties": {
+                "available": { "type": "boolean" },
+                "profiles": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "name": { "type": "string", "description": "Domain | Private | Public" },
+                      "enabled": { "type": "boolean" },
+                      "defaultInboundAction": { "type": "string" },
+                      "defaultOutboundAction": { "type": "string" }
+                    }
+                  }
+                }
+              }
             }
           }
         },
@@ -283,6 +302,22 @@
                 }
               }
             },
+            "drivers": {
+              "type": "array",
+              "description": "Running kernel-mode drivers with Authenticode signature status (-Deep).",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "name": { "type": "string" },
+                  "displayName": { "type": "string" },
+                  "pathName": { "type": "string" },
+                  "state": { "type": "string" },
+                  "startMode": { "type": "string" },
+                  "signatureStatus": { "type": "string", "description": "Valid | NotSigned | HashMismatch | ..." },
+                  "signer": { "type": "string" }
+                }
+              }
+            },
             "processCreationEvents": {
               "type": "array",
               "items": {
@@ -315,6 +350,46 @@
                   "state": { "type": "string" },
                   "processId": { "type": "integer" },
                   "processName": { "type": "string" }
+                }
+              }
+            },
+            "listeners": {
+              "type": "array",
+              "description": "Listening TCP/UDP endpoints with owning process.",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "protocol": { "type": "string", "description": "TCP | UDP" },
+                  "localAddress": { "type": "string" },
+                  "localPort": { "type": "integer" },
+                  "processId": { "type": "integer" },
+                  "processName": { "type": "string" }
+                }
+              }
+            },
+            "dnsCache": {
+              "type": "array",
+              "description": "Local DNS client cache (read-only; shows resolved names without any new lookup).",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "entry": { "type": "string" },
+                  "name": { "type": "string" },
+                  "data": { "type": "string" },
+                  "type": { "type": "string" },
+                  "ttl": { "type": "integer" }
+                }
+              }
+            },
+            "hostsFileEntries": {
+              "type": "array",
+              "description": "Non-comment entries parsed from the hosts file.",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "ipAddress": { "type": "string" },
+                  "hostnames": { "type": "string" },
+                  "raw": { "type": "string" }
                 }
               }
             }

@@ -151,6 +151,14 @@ function Invoke-FosBuiltin {
             if ($d -and ($d.available -eq $true) -and ($d.tamperProtectionEnabled -eq $false)) { return @([pscustomobject]@{ tamperProtectionEnabled=$false }) }
             return @()
         }
+        'FOS-DEF-004' {
+            $fw = Resolve-FosPath $Bundle 'artifacts.securityPosture.firewall'
+            if ($fw -and ($fw.available -eq $true)) {
+                $off = @($fw.profiles | Where-Object { $_ -and ($_.enabled -eq $false) })
+                if ($off.Count -gt 0) { return @([pscustomobject]@{ disabledProfiles = @($off | ForEach-Object { $_.name }); profiles = $fw.profiles }) }
+            }
+            return @()
+        }
         default { return @() }
     }
 }

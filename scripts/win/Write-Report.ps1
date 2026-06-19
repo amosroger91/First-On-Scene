@@ -19,6 +19,10 @@ $here = Split-Path -Parent $MyInvocation.MyCommand.Path
 Import-Module (Join-Path $here 'FOS.Common.psm1') -Force
 
 $f = Get-Content -LiteralPath $FindingsPath -Raw | ConvertFrom-Json
+$bundle = $null
+if ($BundlePath -and (Test-Path -LiteralPath $BundlePath)) {
+    try { $bundle = Get-Content -LiteralPath $BundlePath -Raw | ConvertFrom-Json } catch { $bundle = $null }
+}
 $sevColor = @{ info='#6b7280'; low='#2563eb'; medium='#d97706'; high='#ea580c'; critical='#dc2626' }
 $verdictColor = switch ($f.verdict) { 'ALL_CLEAR' {'#16a34a'} 'MONITOR' {'#d97706'} default {'#dc2626'} }
 
@@ -64,6 +68,49 @@ foreach ($d in ($f.findings | Sort-Object -Property @{Expression={$_.weight};Des
 "@
 }
 if (-not $rows) { $rows = "<tr><td colspan='7' style='text-align:center;color:#16a34a'>No detections fired.</td></tr>" }
+
+# --- Context cards built from the bundle (host snapshot, posture, remote access, coverage) ---
+# All informational: the verdict is driven solely by the scored detections below.
+$hostCard = ''; $postureCard = ''; $remoteCard = ''; $coverageCard = ''
+if ($bundle) {
+    $hi = $bundle.metadata.host
+    if ($hi -and $hi.system) {
+        $si = $hi.system
+        $domTxt = if ($si.partOfDomain) { HtmlEnc $si.domain } else { (HtmlEnc $si.domain) + ' (workgroup)' }
+        $diskRows = ''
+        foreach ($dk in @($hi.disks)) { $pf=[double]$dk.percentFree; $dcol=if($pf -lt 10){'#dc2626'}elseif($pf -lt 20){'#d97706'}else{'#111827'}; $diskRows += "<tr><td><code>$(HtmlEnc $dk.drive)</code> $(HtmlEnc $dk.volumeName)</td><td>$($dk.sizeGB) GB</td><td>$($dk.freeGB) GB</td><td style='color:$dcol'>$($dk.percentFree)% free</td></tr>" }
+        if (-not $diskRows) { $diskRows = "<tr><td colspan='4' style='color:#6b7280'>none</td></tr>" }
+        $userList = (@($hi.loggedOnUsers) | ForEach-Object { (HtmlEnc $_.user) + " <span class='note'>(" + (HtmlEnc $_.session) + ")</span>" }) -join ', '
+        if (-not $userList) { $userList = "<span class='note'>none detected</span>" }
+        $hostCard = "<div class='card'><h2>Host</h2><div class='kv'><b>Machine</b><span>$(HtmlEnc $si.manufacturer) $(HtmlEnc $si.model)</span><b>Serial</b><span>$(HtmlEnc $si.serialNumber)</span><b>OS</b><span>$(HtmlEnc $si.osCaption) (build $(HtmlEnc $si.osBuild), $(HtmlEnc $si.osArchitecture))</span><b>CPU</b><span>$(HtmlEnc $si.cpu) ($($si.cpuCores)C/$($si.cpuLogical)T)</span><b>RAM</b><span>$($si.ramGB) GB</span><b>Domain</b><span>$domTxt</span><b>Uptime</b><span>$(HtmlEnc $si.uptime)</span><b>Logged-on users</b><span>$userList</span></div><table style='margin-top:12px'><tr><th>Disk</th><th>Size</th><th>Free</th><th>Capacity</th></tr>$diskRows</table></div>"
+    }
+    $kv = ''
+    $sp = if ($bundle.artifacts) { $bundle.artifacts.securityPosture } else { $null }
+    $dp = if ($sp) { $sp.defender } else { $null }
+    if ($dp -and $dp.available) { $rtp=if($dp.realTimeEnabled){'on'}else{"<b style='color:#dc2626'>OFF</b>"}; $tpp=if($dp.tamperProtectionEnabled){'on'}else{"<b style='color:#d97706'>OFF</b>"}; $exC=(@($dp.exclusionPaths)+@($dp.exclusionExtensions)+@($dp.exclusionProcesses)|Where-Object{$_}).Count; $kv += "<b>Defender</b><span>real-time=$rtp &nbsp; tamper-protection=$tpp &nbsp; exclusions=$exC</span>" }
+    $fw = if ($sp) { $sp.firewall } else { $null }
+    if ($fw -and $fw.available) { $fwTxt=(@($fw.profiles)|ForEach-Object{ $st=if($_.enabled){'on'}else{"<b style='color:#dc2626'>OFF</b>"}; "$(HtmlEnc $_.name)=$st" }) -join ' &nbsp; '; $kv += "<b>Firewall</b><span>$fwTxt</span>" }
+    $ac = if ($bundle.artifacts) { $bundle.artifacts.accessControl } else { $null }
+    if ($ac) { $rdp=if($ac.rdpEnabled){'enabled'}else{'disabled'}; $adms=(@($ac.localAdmins)|ForEach-Object{HtmlEnc $_}) -join ', '; if(-not $adms){$adms="<span class='note'>none</span>"}; $shr=(@($ac.shares)|ForEach-Object{HtmlEnc $_}) -join ', '; if(-not $shr){$shr="<span class='note'>none</span>"}; $kv += "<b>RDP</b><span>$rdp</span><b>Local admins</b><span>$adms</span><b>Non-default shares</b><span>$shr</span>" }
+    $net = if ($bundle.artifacts) { $bundle.artifacts.network } else { $null }
+    if ($net) {
+        $kv += "<b>Listening ports</b><span>$(@($net.listeners).Count) <span class='note'>(TCP+UDP)</span></span><b>DNS cache entries</b><span>$(@($net.dnsCache).Count)</span>"
+        $hfRedir = @(@($net.hostsFileEntries) | Where-Object { $_.ipAddress -and ($_.ipAddress -notmatch '^(0\.0\.0\.0|127\.|::1|::$|255\.)') })
+        $hfTxt = if ($hfRedir.Count -gt 0) { (@($hfRedir|Select-Object -First 10)|ForEach-Object{ (HtmlEnc $_.ipAddress)+' -> '+(HtmlEnc $_.hostnames) }) -join '<br>' } else { "<span class='note'>none (no non-loopback redirects)</span>" }
+        $kv += "<b>Hosts-file redirects</b><span>$hfTxt</span>"
+    }
+    if ($kv) { $postureCard = "<div class='card'><h2>Security posture &amp; network <span class='note'>(informational)</span></h2><div class='kv'>$kv</div></div>" }
+    $rtools = if ($bundle.artifacts -and $bundle.artifacts.remoteAccess) { @($bundle.artifacts.remoteAccess.tools) } else { @() }
+    if ($rtools.Count -gt 0) {
+        $rrows = (@($rtools) | ForEach-Object { $lab=if($_.authorized){"<span class='pill' style='background:#6b7280'>expected</span>"}else{"<span class='pill' style='background:#0891b2'>undeclared</span>"}; "<tr><td>$(HtmlEnc $_.tool)</td><td>$(HtmlEnc $_.evidence)</td><td>$lab</td></tr>" }) -join ''
+        $remoteCard = "<div class='card'><h2>Remote access / RMM <span class='note'>(informational - never affects the verdict)</span></h2><table><tr><th>Tool</th><th>Evidence</th><th>Status</th></tr>$rrows</table><div class='note'>undeclared = not in the operator's -ExpectedRemoteTools allow-list; confirm each is one you installed.</div></div>"
+    }
+    $errs = @($bundle.metadata.errors)
+    if ($errs.Count -gt 0) {
+        $eul = (@($errs|Select-Object -First 20)|ForEach-Object{ "<li><code>$(HtmlEnc $_.component)</code> $(HtmlEnc $_.message)</li>" }) -join ''
+        $coverageCard = "<div class='card' style='border-left:4px solid #d97706'><h2>Collection coverage</h2><div class='note'>These artifacts could not be fully collected (e.g. not elevated, or a log channel was disabled). Findings in these areas may be incomplete - escalate if in doubt.</div><ul style='font-size:13px;margin:8px 0 0'>$eul</ul></div>"
+    }
+}
 
 $aiSection = ''
 if ($f.aiNarrative -and $f.aiNarrative.enabled) {
@@ -123,6 +170,10 @@ $html = @"
     </div>
     <div class='note'>This report and its source artifacts were produced with zero network egress. See chain_of_custody.log and manifest.json in the case folder.</div>
   </div>
+  $coverageCard
+  $hostCard
+  $postureCard
+  $remoteCard
   $aiSection
   <div class='card'>
     <h2>Detections ($(@($f.findings).Count))</h2>

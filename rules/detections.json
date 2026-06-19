@@ -500,6 +500,75 @@
       "conditions": [ { "field": "eventId", "op": "in", "value": [1102, 104] } ],
       "rationale": "Clearing the Security or System event log (1102/104) is a deliberate anti-forensic act around the incident window.",
       "falsePositive": "Rare administratively. Correlate the clear time with other activity."
+    },
+    {
+      "id": "FOS-NET-003",
+      "name": "Hosts file redirects a domain to a non-loopback address",
+      "category": "Defense Evasion",
+      "mitre": { "tactic": "TA0005", "technique": "T1565.001" },
+      "type": "match",
+      "selector": "artifacts.network.hostsFileEntries",
+      "match": "all",
+      "severity": "medium",
+      "weight": 4,
+      "reasonCode": "HOSTS_REDIRECT",
+      "conditions": [
+        { "field": "hostnames", "op": "exists" },
+        { "field": "ipAddress", "op": "notRegexI", "value": "^(0\\.0\\.0\\.0|127\\.|::1|::$|255\\.)" }
+      ],
+      "rationale": "A hosts-file entry mapping a real hostname to an arbitrary (non-loopback, non-null) IP can silently redirect traffic - classic for blocking AV/update domains or hijacking a site to an attacker server.",
+      "falsePositive": "Developers and admins legitimately pin internal hostnames to LAN IPs in the hosts file. Ad-block lists map to 0.0.0.0/127.0.0.1 and are intentionally excluded. Review each redirected host and its target IP."
+    },
+    {
+      "id": "FOS-NET-004",
+      "name": "Process listening on a known bind-shell / C2 port",
+      "category": "Command and Control",
+      "mitre": { "tactic": "TA0011", "technique": "T1571" },
+      "type": "match",
+      "selector": "artifacts.network.listeners",
+      "match": "all",
+      "severity": "medium",
+      "weight": 4,
+      "reasonCode": "SUSPICIOUS_LISTENER",
+      "conditions": [
+        { "field": "localPort", "op": "in", "value": [4444, 5555, 1337, 3333, 6666, 6667, 9001, 50050] },
+        { "field": "localAddress", "op": "notRegexI", "value": "^(127\\.0\\.0\\.1|::1)$" }
+      ],
+      "rationale": "A process bound to all interfaces on a known Metasploit/bind-shell/C2 port is a strong indicator of an implant awaiting connections.",
+      "falsePositive": "A few legitimate apps use high ports. Loopback-only listeners are excluded. Resolve the owning process and confirm it is expected."
+    },
+    {
+      "id": "FOS-DEF-004",
+      "name": "Windows Firewall profile is disabled",
+      "category": "Defense Evasion",
+      "mitre": { "tactic": "TA0005", "technique": "T1562.004" },
+      "type": "builtin",
+      "selector": "artifacts.securityPosture.firewall",
+      "severity": "medium",
+      "weight": 4,
+      "reasonCode": "FIREWALL_DISABLED",
+      "rationale": "A disabled firewall profile widens the host's exposure and is a common attacker action to enable inbound C2 or lateral movement.",
+      "falsePositive": "A managed third-party firewall may legitimately turn the Windows Firewall profile off. Confirm another firewall is active and policy-managed."
+    },
+    {
+      "id": "FOS-EXE-006",
+      "name": "Unsigned kernel driver loaded from a non-standard path",
+      "category": "Defense Evasion",
+      "mitre": { "tactic": "TA0005", "technique": "T1014" },
+      "type": "match",
+      "selector": "artifacts.execution.drivers",
+      "match": "all",
+      "severity": "high",
+      "weight": 6,
+      "reasonCode": "UNSIGNED_DRIVER",
+      "conditions": [
+        { "field": "signatureStatus", "op": "exists" },
+        { "field": "signatureStatus", "op": "ne", "value": "Valid" },
+        { "field": "pathName", "op": "regexI", "value": "\\.sys" },
+        { "field": "pathName", "op": "notRegexI", "value": "system32\\\\drivers" }
+      ],
+      "rationale": "A running kernel driver that is unsigned and loaded from outside system32\\drivers is a rootkit / bring-your-own-vulnerable-driver indicator (-Deep scan).",
+      "falsePositive": "Rare. A handful of OEM/storage drivers load from vendor paths and may report as catalog-signed rather than Valid. Verify the driver vendor and SHA-256."
     }
   ]
 }

@@ -1,5 +1,63 @@
 # Changelog
 
+## 3.5.0 - Windows collection depth + richer reports
+
+### Added (Windows collector: `scripts/win/Collect-Artifacts.ps1` + standalone `deploy/standalone/Invoke-FosTriage.ps1`)
+- **Network state** (read-only, zero egress): `artifacts.network.listeners` (listening TCP/UDP
+  endpoints with owning process), `artifacts.network.dnsCache` (local DNS client cache - shows
+  resolved/beaconing names without any new lookup), and `artifacts.network.hostsFileEntries`
+  (parsed hosts-file mappings).
+- **Windows Firewall posture** (`artifacts.securityPosture.firewall`): per-profile
+  (Domain/Private/Public) enabled state + default inbound/outbound action.
+- **Kernel driver inventory** under `-Deep` (`artifacts.execution.drivers`): running drivers with
+  Authenticode signature status + signer, path-normalized from the service image path.
+
+### Added (rules, `rules/detections.json`)
+- **FOS-NET-003** Hosts-file redirect to a non-loopback address (medium; ad-block 0.0.0.0/127.* are
+  intentionally excluded to avoid false positives).
+- **FOS-NET-004** Process listening on a known bind-shell / C2 port, bound to a non-loopback address
+  (medium).
+- **FOS-DEF-004** A Windows Firewall profile is disabled (medium; builtin correlator).
+- **FOS-EXE-006** Unsigned kernel driver loaded from outside `system32\drivers` (high; `-Deep`).
+
+### Added (reports)
+- The **modular HTML report** (`Write-Report.ps1`) now renders the Host snapshot, a **Security
+  posture & network** panel (Defender, firewall, RDP/admins/shares, listener & DNS counts,
+  hosts-file redirects), a **Remote access / RMM** table, and a **Collection coverage** banner that
+  surfaces `metadata.errors` (e.g. not-elevated, disabled log channels) so blind spots are explicit.
+- The **standalone report + console** gain the same Security posture & network panel, hosts-file
+  redirect callouts, firewall line, and the Collection coverage banner.
+
+### Changed
+- Engine/standalone version bumped to `3.5.0`. New checks are Windows-only context/detections and
+  do not regress Linux verdicts; informational signals (remote access, posture, coverage) never
+  affect the score.
+
+## 3.4.0 - Linux/macOS collector reaches parity with Windows
+
+### Added (Linux/macOS collector, `scripts/nix/collect-artifacts.sh`)
+- **Remote-access / RMM inventory** (`artifacts.remoteAccess.tools`, drives `FOS-RAT-001/002`):
+  detects 25 agent families (AnyDesk, TeamViewer, RustDesk, ScreenConnect, NinjaOne, Atera,
+  Splashtop, VNC, MeshCentral, Tactical RMM, Chrome Remote Desktop, etc.) across processes,
+  systemd units, and installed packages (dpkg/rpm). Honors `--expected-remote-tools` as the
+  sanctioned allow-list, mirroring the Windows `-ExpectedRemoteTools`.
+- **Access-control snapshot** (`artifacts.accessControl`): local admins (sudo/wheel/admin groups
+  + uid-0 accounts), RDP/xrdp state, and Samba/NFS shares.
+- **Process image enrichment** via `/proc`: real `executablePath`, **deleted-image flag**
+  (`imageDeleted`, drives `FOS-EXE-004`), and `sha256` under `--deep`.
+- **Account-creation events** synthesized from auth logs as event 4720 (drives `FOS-CRD-002`).
+- **ClamAV detections** read from existing logs only (never runs a scan; drives `FOS-AV-002`).
+- **ISO-8601 file timestamps** + suspicious-dir scan (`/tmp`, `/var/tmp`, `/dev/shm`, Desktop,
+  Downloads), so ransom-note (`FOS-RAN-001`) and timestomping (`FOS-AF-001`) fire on *nix.
+- **Non-fatal error capture** into `metadata.errors`, `platform` auto-detection (linux/darwin),
+  and `--deep` / `--max-events` / `--case-dir` flags wired through `fos.sh`.
+
+### Changed
+- Engine version bumped to `3.4.0`. The Linux and Windows collectors now emit the same artifact
+  shape and the analyzers stay at full verdict/scoring/exit-code parity.
+- `reasonCode` tie-break in the Linux analyzer aligned with Windows (highest `weight x min(hits,3)`),
+  and the findings report gained the Score-thresholds + Ruleset/Engine rows.
+
 ## 3.3.0 - Host snapshot + remote-access tools are informational
 
 ### Added
