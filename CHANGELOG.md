@@ -1,5 +1,22 @@
 # Changelog
 
+## 3.3.0 - Host snapshot + remote-access tools are informational
+
+### Added
+- **Host snapshot** in the standalone triage console + HTML report: make/model, serial number,
+  OS + build + architecture, CPU (cores/threads), RAM, per-disk capacity & free space (with a
+  low-space highlight), system uptime, domain, and **logged-on interactive users**. Captured into
+  the sealed bundle under `metadata.host`.
+
+### Changed
+- **Remote-access / RMM tools are now informational and never affect the verdict** (`FOS-RAT-001`
+  dropped from high/weight-9 to info/weight-0; reason code `UNAUTHORIZED_REMOTE_ACCESS` -> 
+  `UNDECLARED_REMOTE_ACCESS`). MSPs run RMMs by design, so their mere presence is no longer scored
+  as a compromise. Tools not in `-ExpectedRemoteTools` are listed as `[undeclared]` (neutral) for
+  review instead of `[UNAUTHORIZED]` (red). The verdict is driven solely by actual attack indicators.
+- Ruleset bumped to `1.1.0`. Change flows to the Windows + Linux analyzers and the standalone (all
+  read the shared `rules/detections.json`), so verdict/scoring parity is preserved.
+
 ## 3.2.0 - Deeper compromise checks (Tier A default + `-Deep`)
 
 ### Added (default - cheap native reads, big signal)

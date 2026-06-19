@@ -19,15 +19,19 @@
 You've got NinjaOne / ScreenConnect on a box and think it might be popped. Run this **single,
 self-contained command** on that machine (locally, or paste it into your RMM / ScreenConnect
 run-command window). It needs **nothing installed**, makes **no internet calls** during analysis,
-and prints a clear verdict — and it will flag any remote-access software that you *didn't* put there.
+and prints a clear verdict plus a **host snapshot** — make/model, serial, OS, CPU/RAM, disk free
+space, logged-on users — and an inventory of every remote-access / RMM agent on the box.
 
 ```powershell
 $p="$env:TEMP\Invoke-FosTriage.ps1"; iwr "https://raw.githubusercontent.com/amosroger91/First-On-Scene/main/deploy/standalone/Invoke-FosTriage.ps1" -OutFile $p -UseBasicParsing; & $p -ExpectedRemoteTools 'NinjaOne,ScreenConnect'
 ```
 
-> List the remote-access tools you *expect* in `-ExpectedRemoteTools` (comma-separated) so your own
-> agents aren't flagged. Everything else — AnyDesk, TeamViewer, RustDesk, Splashtop, an unexpected
-> LabTech, etc. — gets called out as **UNAUTHORIZED**.
+> **Remote-access / RMM tools are shown as *informational* — they never drive the verdict.** MSPs
+> run RMMs by design, so finding NinjaOne, ScreenConnect, Splashtop, etc. is not a compromise. List
+> the agents you *expect* in `-ExpectedRemoteTools` (comma-separated) to label them `[expected]`;
+> anything else (AnyDesk, TeamViewer, RustDesk, an unexpected LabTech...) is listed as `[undeclared]`
+> so you can eyeball it and confirm it's one you installed. The verdict is decided by the actual
+> attack indicators below — not by which remote tools are present.
 
 By default it runs a fast pass that also checks **Defender health/tamper state**, **code signatures
 + SHA-256 of every running process**, **autostart hijacks** (IFEO / AppInit / Winlogon / sticky-keys
@@ -40,11 +44,25 @@ It prints a console verdict like:
 ```
 ============================================================
   FIRST-ON-SCENE  ::  PROBLEM_DETECTED (Incident)
-  HOST: WS-01    SCORE: 45    REASON: UNAUTHORIZED_REMOTE_ACCESS
+  HOST: WS-01    SCORE: 28    REASON: AV_DISABLED
 ============================================================
-  Remote-access tools found:
-   [expected]     ScreenConnect / ConnectWise Control (process,service)
-   [UNAUTHORIZED] RustDesk (installed)
+  Machine:
+   Dell Inc. Latitude 5440   S/N 7XYZ123
+   OS: Microsoft Windows 11 Pro (build 26200, 64-bit)
+   CPU: 13th Gen Intel(R) Core(TM) i5-1345U  (10C/12T)   RAM: 15.7 GB   Uptime: 2d 4h 11m
+   Domain: client.local
+  Disks:
+   C:  41 GB free of 476 GB (9% free)
+  Logged-on users:
+   CLIENT\jsmith (interactive)
+============================================================
+  Top findings:
+   [critical] FOS-DEF-001  Microsoft Defender real-time protection is OFF
+   [medium  ] FOS-DEF-003  Defender tamper protection is OFF
+  Remote-access / RMM tools (informational - does not affect verdict):
+   [expected]   ScreenConnect / ConnectWise Control (process,service)
+   [undeclared] RustDesk (installed)
+   (undeclared = not in your -ExpectedRemoteTools list; confirm each is one you installed)
 ============================================================
   Report:   C:\ProgramData\FirstOnScene\cases\...\Incident_Report_*.html
 ```
@@ -139,7 +157,7 @@ A fast, **read-only, live** pass — designed to answer "is this box compromised
 **Default pass:**
 - **Persistence** — Run/RunOnce keys, scheduled tasks, services, WMI event subscriptions, and high-value **ASEP hijacks**: IFEO debuggers, AppInit_DLLs, Winlogon Shell/Userinit, and accessibility / sticky-keys backdoors.
 - **Execution** — running processes with **Authenticode signature + SHA-256**; unsigned binaries from user/temp paths, processes whose on-disk image was deleted, and Office→LOLBin trees.
-- **Remote access / RMM** — inventories AnyDesk, TeamViewer, ScreenConnect, NinjaOne, Atera, Splashtop, RustDesk, VNC, LabTech, Kaseya, Datto and more; flags anything **not** in your `-ExpectedRemoteTools` allow-list.
+- **Remote access / RMM** — inventories AnyDesk, TeamViewer, ScreenConnect, NinjaOne, Atera, Splashtop, RustDesk, VNC, LabTech, Kaseya, Datto and more. **Informational only — never affects the verdict** (MSPs run RMMs by design); anything not in your `-ExpectedRemoteTools` allow-list is surfaced as `[undeclared]` for a quick eyeball.
 - **Security posture** — Microsoft Defender real-time/tamper state and configured exclusions.
 - **Network** — connections to high-risk C2 ports and external RDP/SMB exposure.
 - **Credential access** — privileged + service-logon correlation, new local accounts.
@@ -165,7 +183,7 @@ A fast, **read-only, live** pass — designed to answer "is this box compromised
 ## Common options
 
 ```powershell
-# Allow-list your own remote-access agents so only unexpected ones are flagged
+# Declare your own remote-access agents so they show as [expected] instead of [undeclared]
 .\scripts\win\fos.ps1 -ExpectedRemoteTools 'NinjaOne,ScreenConnect'
 
 # Deeper pass (Prefetch + possible-injection module scan)

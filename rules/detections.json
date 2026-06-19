@@ -1,5 +1,5 @@
 {
-  "rulesetVersion": "1.0.0",
+  "rulesetVersion": "1.1.0",
   "description": "First-On-Scene deterministic detection ruleset. Each rule maps to a MITRE ATT&CK technique. The analyzer evaluates these generically against an artifact bundle. Authoring guide: docs/RULES.md.",
   "scoring": {
     "thresholds": { "monitor": 10, "problem": 30, "breach": 60 },
@@ -309,16 +309,16 @@
     },
     {
       "id": "FOS-RAT-001",
-      "name": "Unauthorized remote-access / RMM tool present",
-      "category": "Command and Control",
+      "name": "Remote-access / RMM tool present but not declared",
+      "category": "Remote Access",
       "mitre": { "tactic": "TA0011", "technique": "T1219" },
       "type": "builtin",
       "selector": "artifacts.remoteAccess.tools",
-      "severity": "high",
-      "weight": 9,
-      "reasonCode": "UNAUTHORIZED_REMOTE_ACCESS",
-      "rationale": "A remote-access or RMM agent that is NOT on the operator's expected list is a top initial-access and hands-on-keyboard indicator (e.g. attacker-installed AnyDesk, TeamViewer, or RustDesk).",
-      "falsePositive": "A legitimate tool the MSP forgot to declare. Re-run with -ExpectedRemoteTools listing your sanctioned agents (e.g. 'NinjaOne,ScreenConnect')."
+      "severity": "info",
+      "weight": 0,
+      "reasonCode": "UNDECLARED_REMOTE_ACCESS",
+      "rationale": "A remote-access or RMM agent is present that was not listed in -ExpectedRemoteTools. In an MSP context this is almost always one of your own sanctioned agents, so it is shown for review only and does NOT affect the verdict. Confirm each tool is yours; an agent you genuinely did not install (e.g. attacker-staged AnyDesk, TeamViewer, or RustDesk) is worth investigating.",
+      "falsePositive": "Almost always a legitimate tool the MSP did not declare. List your sanctioned agents with -ExpectedRemoteTools (e.g. 'NinjaOne,ScreenConnect') to label them as expected."
     },
     {
       "id": "FOS-RAT-002",
