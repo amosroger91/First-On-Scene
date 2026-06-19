@@ -1,5 +1,5 @@
 <div align="center">
-  <img src="assets/logo.png" alt="First-On-Scene" width="280"/>
+  <img src="assets/logo-v2.png" alt="First-On-Scene" width="280"/>
   <h1>First-On-Scene</h1>
   <p><strong>The free, open-source incident-response triage toolkit for MSPs.</strong></p>
   <p>Collects forensic artifacts, decides <strong>All Clear / Monitor / Problem Detected</strong> with a deterministic engine, and seals the evidence — <strong>fully offline, CJIS-ready, RMM-native.</strong></p>
