@@ -132,6 +132,26 @@ Detections live in [`rules/detections.json`](rules/detections.json) — versione
 
 ---
 
+## What it inspects (and how deep)
+
+A fast, **read-only, live** pass — designed to answer "is this box compromised?" in well under a minute, then tell you when something warrants a deeper dive.
+
+**Default pass:**
+- **Persistence** — Run/RunOnce keys, scheduled tasks, services, WMI event subscriptions, and high-value **ASEP hijacks**: IFEO debuggers, AppInit_DLLs, Winlogon Shell/Userinit, and accessibility / sticky-keys backdoors.
+- **Execution** — running processes with **Authenticode signature + SHA-256**; unsigned binaries from user/temp paths, processes whose on-disk image was deleted, and Office→LOLBin trees.
+- **Remote access / RMM** — inventories AnyDesk, TeamViewer, ScreenConnect, NinjaOne, Atera, Splashtop, RustDesk, VNC, LabTech, Kaseya, Datto and more; flags anything **not** in your `-ExpectedRemoteTools` allow-list.
+- **Security posture** — Microsoft Defender real-time/tamper state and configured exclusions.
+- **Network** — connections to high-risk C2 ports and external RDP/SMB exposure.
+- **Credential access** — privileged + service-logon correlation, new local accounts.
+- **Defense evasion** — obfuscated/download-cradle PowerShell, timestomping, **Security/System log-clear** events.
+- **Malware** — on-box AV detections and ransom-note indicators.
+
+**`-Deep` pass** (a minute or two more, still zero dependencies): Prefetch execution evidence + a possible-injection scan (unsigned modules loaded into running processes).
+
+**The honest ceiling:** everything above is live OS-level, so a kernel rootkit can still hide from it. The deepest layers — **full memory image (Volatility), disk imaging / $MFT / super-timeline, and firmware/UEFI** — defeat that by analyzing off the box, but they're a heavy, offline DFIR job and deliberately *not* part of the fast triage. First-On-Scene's role is to make the live call confidently and tell you when to escalate to that.
+
+---
+
 ## Deployment
 
 | Target | Guide |
@@ -145,6 +165,12 @@ Detections live in [`rules/detections.json`](rules/detections.json) — versione
 ## Common options
 
 ```powershell
+# Allow-list your own remote-access agents so only unexpected ones are flagged
+.\scripts\win\fos.ps1 -ExpectedRemoteTools 'NinjaOne,ScreenConnect'
+
+# Deeper pass (Prefetch + possible-injection module scan)
+.\scripts\win\fos.ps1 -Deep
+
 # Branding + custom response hooks
 .\scripts\win\fos.ps1 -BrandName "Acme SOC" -CustomProblemScript C:\rmm\alert.ps1
 
@@ -157,7 +183,7 @@ Detections live in [`rules/detections.json`](rules/detections.json) — versione
 # Add a LOCAL AI narrative (requires Ollama on localhost; stays on the box)
 .\scripts\win\fos.ps1 -EnableLocalAI
 ```
-Linux equivalents use `--brand`, `--mode collect|analyze`, `--bundle`, `--enable-local-ai`.
+Linux equivalents use `--brand`, `--mode collect|analyze`, `--bundle`, `--enable-local-ai` (remote-tool/deep checks are Windows-focused). The self-contained single-file tool is [`deploy/standalone/Invoke-FosTriage.ps1`](deploy/standalone/Invoke-FosTriage.ps1) — see the [suspected-compromise section](#-suspect-a-machine-is-compromised-run-this-one-command).
 
 ---
 
