@@ -1,0 +1,13 @@
+# Normalize line endings. Shell scripts MUST stay LF so they run on Linux/macOS
+# even when checked out on Windows. PowerShell stays CRLF (Windows-native).
+* text=auto
+
+*.sh   text eol=lf
+*.bats text eol=lf
+
+*.ps1  text eol=crlf
+*.psm1 text eol=crlf
+
+# Treat bundled binaries as binary (no EOL conversion, no diff noise)
+*.exe binary
+*.png binary
