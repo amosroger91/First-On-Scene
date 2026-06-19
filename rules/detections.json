@@ -1,0 +1,311 @@
+{
+  "rulesetVersion": "1.0.0",
+  "description": "First-On-Scene deterministic detection ruleset. Each rule maps to a MITRE ATT&CK technique. The analyzer evaluates these generically against an artifact bundle. Authoring guide: docs/RULES.md.",
+  "scoring": {
+    "thresholds": { "monitor": 10, "problem": 30, "breach": 60 },
+    "notes": "verdict = ALL_CLEAR (<monitor) | MONITOR (>=monitor, <problem) | PROBLEM_DETECTED (>=problem). classification escalates to Breach at >=breach OR when any matched rule sets escalateToBreach=true."
+  },
+  "conditionOperators": [
+    "regexI", "notRegexI", "containsI", "notContainsI",
+    "eq", "ne", "gt", "lt", "ge", "le", "in", "notIn", "exists", "isTrue", "isFalse"
+  ],
+  "rules": [
+    {
+      "id": "FOS-PER-001",
+      "name": "Registry Run key launching from a non-system path",
+      "category": "Persistence",
+      "mitre": { "tactic": "TA0003", "technique": "T1547.001" },
+      "type": "match",
+      "selector": "artifacts.persistence.registryRunKeys",
+      "match": "all",
+      "severity": "low",
+      "weight": 2,
+      "reasonCode": "PERSISTENCE_RUN_KEY",
+      "conditions": [
+        { "field": "valueData", "op": "notRegexI", "value": "\\\\(Windows|Program Files|Program Files \\(x86\\))\\\\" },
+        { "field": "valueData", "op": "regexI", "value": "\\.(exe|dll|bat|cmd|ps1|vbs|js|scr|jar|hta)" }
+      ],
+      "rationale": "Autorun entries that execute binaries from user, temp, or AppData paths are a classic persistence mechanism.",
+      "falsePositive": "Some legitimate per-user apps (updaters, sync clients) register Run keys under AppData. Confirm the publisher and signature of the target binary."
+    },
+    {
+      "id": "FOS-PER-002",
+      "name": "Scheduled task executing from a user/temp path",
+      "category": "Persistence",
+      "mitre": { "tactic": "TA0003", "technique": "T1053.005" },
+      "type": "match",
+      "selector": "artifacts.persistence.scheduledTasks",
+      "match": "all",
+      "severity": "medium",
+      "weight": 3,
+      "reasonCode": "PERSISTENCE_SCHEDULED_TASK",
+      "conditions": [
+        { "field": "actions", "op": "regexI", "value": "\\\\(Users|Temp|AppData|ProgramData)\\\\" },
+        { "field": "author", "op": "notRegexI", "value": "Microsoft" }
+      ],
+      "rationale": "Scheduled tasks pointing at user-writable directories and not authored by Microsoft are frequently used for persistence and re-infection.",
+      "falsePositive": "Line-of-business apps and some installers create user-scoped tasks. Validate the action target and signing."
+    },
+    {
+      "id": "FOS-PER-003",
+      "name": "Auto-start service from a non-standard path",
+      "category": "Persistence",
+      "mitre": { "tactic": "TA0003", "technique": "T1543.003" },
+      "type": "match",
+      "selector": "artifacts.persistence.services",
+      "match": "all",
+      "severity": "medium",
+      "weight": 4,
+      "reasonCode": "PERSISTENCE_SERVICE",
+      "conditions": [
+        { "field": "startMode", "op": "regexI", "value": "auto" },
+        { "field": "pathName", "op": "notRegexI", "value": "\\\\(Windows|Program Files|Program Files \\(x86\\))\\\\" },
+        { "field": "pathName", "op": "regexI", "value": "\\.exe" }
+      ],
+      "rationale": "Auto-start services running executables outside Windows/Program Files are a high-confidence persistence indicator.",
+      "falsePositive": "A few third-party agents install under ProgramData or custom roots. Verify the vendor."
+    },
+    {
+      "id": "FOS-PER-004",
+      "name": "WMI permanent event subscription present",
+      "category": "Persistence",
+      "mitre": { "tactic": "TA0003", "technique": "T1546.003" },
+      "type": "builtin",
+      "selector": "artifacts.persistence.wmiEventSubscriptions",
+      "severity": "high",
+      "weight": 10,
+      "reasonCode": "PERSISTENCE_WMI",
+      "rationale": "WMI permanent event subscriptions are a fileless persistence technique rarely used by legitimate software.",
+      "falsePositive": "A small number of management/EDR products register WMI consumers. Enumerate the consumer command lines."
+    },
+    {
+      "id": "FOS-EXE-001",
+      "name": "Process running from a user/temp directory",
+      "category": "Execution",
+      "mitre": { "tactic": "TA0002", "technique": "T1059" },
+      "type": "match",
+      "selector": "artifacts.execution.processes",
+      "match": "all",
+      "severity": "low",
+      "weight": 2,
+      "reasonCode": "SUSPICIOUS_EXECUTION",
+      "conditions": [
+        { "field": "executablePath", "op": "regexI", "value": "\\\\(Temp|AppData\\\\Local\\\\Temp|ProgramData\\\\Temp)\\\\" }
+      ],
+      "rationale": "Executables launched from temporary directories are a common malware staging pattern.",
+      "falsePositive": "Installers and self-updating apps frequently execute from Temp. Correlate with signing, parent process, and network activity."
+    },
+    {
+      "id": "FOS-EXE-002",
+      "name": "LOLBin spawned from Office or script host",
+      "category": "Execution",
+      "mitre": { "tactic": "TA0002", "technique": "T1059.001" },
+      "type": "match",
+      "selector": "artifacts.execution.processCreationEvents",
+      "match": "all",
+      "severity": "high",
+      "weight": 7,
+      "reasonCode": "SUSPICIOUS_PROCESS_TREE",
+      "conditions": [
+        { "field": "parentProcessName", "op": "regexI", "value": "(winword|excel|powerpnt|outlook|wscript|cscript|mshta)\\.exe" },
+        { "field": "newProcessName", "op": "regexI", "value": "(powershell|cmd|rundll32|regsvr32|certutil|bitsadmin|curl|wmic)\\.exe" }
+      ],
+      "rationale": "Office or scripting hosts spawning living-off-the-land binaries is a hallmark of phishing-delivered execution.",
+      "falsePositive": "Rare in normal use; investigate every hit."
+    },
+    {
+      "id": "FOS-NET-001",
+      "name": "Established connection to external host on a high-risk port",
+      "category": "Command and Control",
+      "mitre": { "tactic": "TA0011", "technique": "T1571" },
+      "type": "match",
+      "selector": "artifacts.network.connections",
+      "match": "all",
+      "severity": "high",
+      "weight": 8,
+      "reasonCode": "SUSPICIOUS_C2_CONNECTION",
+      "conditions": [
+        { "field": "remotePort", "op": "in", "value": [4444, 5555, 1080, 1337, 3333, 6667, 6697, 8443, 9001, 50050] },
+        { "field": "state", "op": "regexI", "value": "established" },
+        { "field": "remoteAddress", "op": "notRegexI", "value": "^(127\\.|10\\.|192\\.168\\.|172\\.(1[6-9]|2[0-9]|3[0-1])\\.|169\\.254\\.|0\\.0\\.0\\.0|::1|fe80|\\[?::)" }
+      ],
+      "rationale": "Outbound sessions to public IPs on known C2/Metasploit/IRC ports strongly indicate command-and-control.",
+      "falsePositive": "8443 is sometimes a legitimate management port. Resolve the remote IP and owning process."
+    },
+    {
+      "id": "FOS-NET-002",
+      "name": "External RDP/SMB exposure (lateral movement surface)",
+      "category": "Lateral Movement",
+      "mitre": { "tactic": "TA0008", "technique": "T1021" },
+      "type": "match",
+      "selector": "artifacts.network.connections",
+      "match": "all",
+      "severity": "medium",
+      "weight": 4,
+      "reasonCode": "EXTERNAL_RDP_SMB",
+      "conditions": [
+        { "field": "remotePort", "op": "in", "value": [3389, 445] },
+        { "field": "state", "op": "regexI", "value": "established" },
+        { "field": "remoteAddress", "op": "notRegexI", "value": "^(127\\.|10\\.|192\\.168\\.|172\\.(1[6-9]|2[0-9]|3[0-1])\\.|169\\.254\\.|::1|fe80)" }
+      ],
+      "rationale": "RDP or SMB sessions to/from public addresses indicate either exposure or active lateral movement.",
+      "falsePositive": "Site-to-site VPNs and cloud-hosted servers can produce legitimate external RDP/SMB."
+    },
+    {
+      "id": "FOS-PSH-001",
+      "name": "PowerShell download cradle / in-memory execution",
+      "category": "Defense Evasion",
+      "mitre": { "tactic": "TA0005", "technique": "T1059.001" },
+      "type": "match",
+      "selector": "artifacts.powerShellActivity.scriptBlockLogs",
+      "match": "any",
+      "severity": "high",
+      "weight": 8,
+      "reasonCode": "MALICIOUS_POWERSHELL",
+      "conditions": [
+        { "field": "scriptBlock", "op": "regexI", "value": "(downloadstring|downloadfile|net\\.webclient|iex\\s*\\(|invoke-expression|\\[reflection\\.assembly\\]::load|start-bitstransfer\\s+-source\\s+http|certutil\\s+-urlcache)" }
+      ],
+      "rationale": "Download cradles and in-memory code execution (IEX + Net.WebClient.DownloadString, reflective assembly loads) are high-confidence indicators of malicious PowerShell.",
+      "falsePositive": "A few legitimate bootstrap/installer scripts use Invoke-Expression. Read the full script block for the URL and intent."
+    },
+    {
+      "id": "FOS-PSH-002",
+      "name": "Encoded PowerShell command",
+      "category": "Defense Evasion",
+      "mitre": { "tactic": "TA0005", "technique": "T1027" },
+      "type": "match",
+      "selector": "artifacts.powerShellActivity.scriptBlockLogs",
+      "match": "any",
+      "severity": "low",
+      "weight": 2,
+      "reasonCode": "ENCODED_POWERSHELL",
+      "conditions": [
+        { "field": "scriptBlock", "op": "regexI", "value": "(frombase64string|-enc\\b|-encodedcommand\\b)" }
+      ],
+      "rationale": "Base64/encoded PowerShell can hide intent. Low weight on its own because legitimate RMM and automation tooling (including NinjaOne) routinely use -EncodedCommand.",
+      "falsePositive": "Very common in RMM/automation. Treat as corroborating context, not a standalone indicator."
+    },
+    {
+      "id": "FOS-CRD-001",
+      "name": "Privileged logon correlated with service logon",
+      "category": "Credential Access",
+      "mitre": { "tactic": "TA0006", "technique": "T1078" },
+      "type": "builtin",
+      "selector": "artifacts.credentialAccess",
+      "severity": "medium",
+      "weight": 5,
+      "reasonCode": "SUSPICIOUS_PRIVILEGED_LOGON",
+      "rationale": "Co-occurrence of special-privilege logons (4672) and service logons (4624 type 5) can indicate token abuse or malicious service installation.",
+      "falsePositive": "Normal on busy servers. Treat as corroborating, not standalone, evidence."
+    },
+    {
+      "id": "FOS-CRD-002",
+      "name": "New local user account created",
+      "category": "Persistence",
+      "mitre": { "tactic": "TA0003", "technique": "T1136.001" },
+      "type": "match",
+      "selector": "artifacts.credentialAccess.userCreationEvents",
+      "match": "all",
+      "severity": "medium",
+      "weight": 6,
+      "reasonCode": "NEW_ACCOUNT_CREATED",
+      "conditions": [
+        { "field": "eventId", "op": "eq", "value": 4720 }
+      ],
+      "rationale": "Account creation (4720) outside a known provisioning workflow is a persistence and backdoor indicator.",
+      "falsePositive": "Legitimate onboarding/IT provisioning. Correlate with change tickets."
+    },
+    {
+      "id": "FOS-AF-001",
+      "name": "Timestomping (creation time later than last write)",
+      "category": "Defense Evasion",
+      "mitre": { "tactic": "TA0005", "technique": "T1070.006" },
+      "type": "builtin",
+      "selector": "artifacts.fileSystem.fileMetadata",
+      "severity": "medium",
+      "weight": 4,
+      "reasonCode": "TIMESTOMPING",
+      "rationale": "A creation timestamp later than the last-write timestamp is a strong anti-forensic timestomping indicator.",
+      "falsePositive": "File copy/restore operations and some backup tools can legitimately reorder MACE times."
+    },
+    {
+      "id": "FOS-AV-001",
+      "name": "Windows Defender detected threats",
+      "category": "Malware",
+      "mitre": { "tactic": "TA0002", "technique": "T1204" },
+      "type": "builtin",
+      "selector": "artifacts.antivirusScans.defenderScan",
+      "severity": "critical",
+      "weight": 20,
+      "escalateToBreach": false,
+      "reasonCode": "MALWARE_DETECTED",
+      "rationale": "An on-box AV engine confirming a detection is high-confidence evidence of malware.",
+      "falsePositive": "PUA/heuristic detections occasionally over-report. Confirm the threat name."
+    },
+    {
+      "id": "FOS-AV-002",
+      "name": "ClamAV detected infected files",
+      "category": "Malware",
+      "mitre": { "tactic": "TA0002", "technique": "T1204" },
+      "type": "builtin",
+      "selector": "artifacts.antivirusScans.clamavScan",
+      "severity": "critical",
+      "weight": 18,
+      "reasonCode": "MALWARE_DETECTED",
+      "rationale": "ClamAV signature hits indicate known-malicious files present on disk.",
+      "falsePositive": "ClamAV can flag cracked software and test files (EICAR). Verify the signature name."
+    },
+    {
+      "id": "FOS-RAN-001",
+      "name": "Ransom note filename indicator",
+      "category": "Impact",
+      "mitre": { "tactic": "TA0040", "technique": "T1486" },
+      "type": "match",
+      "selector": "artifacts.fileSystem.fileMetadata",
+      "match": "any",
+      "severity": "critical",
+      "weight": 30,
+      "escalateToBreach": true,
+      "reasonCode": "RANSOMWARE_ENCRYPTED_FILES",
+      "conditions": [
+        { "field": "fileName", "op": "regexI", "value": "(readme|recover|restore|how.?to.?decrypt|decrypt.?instruction|_readme|@want_to_recover)\\.(txt|html|hta)$" }
+      ],
+      "rationale": "Ransom-note filenames in collected file metadata are a near-certain ransomware impact indicator.",
+      "falsePositive": "A plain README.txt is benign; the regex targets recovery/decrypt phrasing. Confirm contents."
+    },
+    {
+      "id": "FOS-NIX-001",
+      "name": "Cron job invoking a download cradle or shell",
+      "category": "Persistence",
+      "mitre": { "tactic": "TA0003", "technique": "T1053.003" },
+      "type": "match",
+      "selector": "artifacts.persistence.cronJobs",
+      "match": "any",
+      "severity": "high",
+      "weight": 7,
+      "reasonCode": "PERSISTENCE_CRON",
+      "conditions": [
+        { "field": "command", "op": "regexI", "value": "(curl|wget).*(\\|\\s*(ba)?sh)|/tmp/|base64\\s+-d|python.*-c|nc\\s|/dev/tcp/" }
+      ],
+      "rationale": "Cron entries that fetch and pipe code to a shell, or run from /tmp, are a Linux persistence/backdoor pattern.",
+      "falsePositive": "Some legitimate maintenance jobs use curl/wget. Review the full command."
+    },
+    {
+      "id": "FOS-NIX-002",
+      "name": "systemd service executing from a world-writable path",
+      "category": "Persistence",
+      "mitre": { "tactic": "TA0003", "technique": "T1543.002" },
+      "type": "match",
+      "selector": "artifacts.persistence.systemdServices",
+      "match": "any",
+      "severity": "high",
+      "weight": 7,
+      "reasonCode": "PERSISTENCE_SYSTEMD",
+      "conditions": [
+        { "field": "execStart", "op": "regexI", "value": "(/tmp/|/dev/shm/|/var/tmp/|/home/[^/]+/\\.)" }
+      ],
+      "rationale": "systemd units launching binaries from /tmp, /dev/shm, or hidden home paths are a strong Linux persistence indicator.",
+      "falsePositive": "Uncommon for legitimate units. Investigate every hit."
+    }
+  ]
+}

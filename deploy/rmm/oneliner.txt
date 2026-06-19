@@ -1,0 +1,56 @@
+First-On-Scene - Generic RMM / One-Liner Reference
+==================================================
+
+EXIT-CODE CONTRACT (works with ANY RMM: ConnectWise Automate, Datto, Action1,
+Syncro, Atera, Tactical RMM, Kaseya, NinjaOne):
+
+    0   ALL_CLEAR          - no action
+    10  MONITOR            - low-confidence findings, review
+    20  PROBLEM_DETECTED   - Incident  -> raise ticket / alert
+    21  PROBLEM_DETECTED   - Breach    -> escalate immediately
+    1   runtime error      - investigate the run
+
+Most RMMs let you branch automation on the script exit code and/or the
+custom fields the NinjaOne wrapper writes (verdict, score, classification).
+
+----------------------------------------------------------------------
+WINDOWS - run from a pre-staged path (recommended for CJIS; no internet)
+----------------------------------------------------------------------
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File "C:\ProgramData\FirstOnScene\scripts\win\fos.ps1" -NoAction
+
+# Collect-only (analyst pulls the bundle for offline analysis):
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File "C:\ProgramData\FirstOnScene\scripts\win\fos.ps1" -Mode collect
+
+----------------------------------------------------------------------
+WINDOWS - ad-hoc bootstrap from GitHub (NON-CJIS / lab use only)
+----------------------------------------------------------------------
+# WARNING: pulls code over the internet. Do NOT use on regulated/CJIS endpoints.
+$d=Join-Path $env:TEMP 'FOS'; ni -ItemType Directory -Path $d -Force|Out-Null; iwr 'https://github.com/amosroger91/First-On-Scene/archive/refs/heads/main.zip' -OutFile "$d\m.zip" -UseBasicParsing; Expand-Archive "$d\m.zip" $d -Force; & "$d\First-On-Scene-main\scripts\win\fos.ps1" -NoAction
+
+----------------------------------------------------------------------
+LINUX / macOS - run from a pre-staged path
+----------------------------------------------------------------------
+sudo bash /opt/first-on-scene/scripts/nix/fos.sh --no-action
+
+# Collect-only:
+sudo bash /opt/first-on-scene/scripts/nix/fos.sh --mode collect
+
+----------------------------------------------------------------------
+LINUX - ad-hoc bootstrap (NON-CJIS / lab use only)
+----------------------------------------------------------------------
+cd /tmp && curl -L https://github.com/amosroger91/First-On-Scene/archive/refs/heads/main.tar.gz | tar -xz && sudo bash First-On-Scene-main/scripts/nix/fos.sh --no-action
+
+----------------------------------------------------------------------
+RESULTS
+----------------------------------------------------------------------
+Each run produces a sealed case folder containing:
+    bundle.json            raw collected artifacts (read-only)
+    findings.json          deterministic verdict + scored findings (machine-readable)
+    findings.md            human-readable findings
+    Incident_Report_*.html branded report
+    manifest.json          SHA-256 of every evidence file
+    chain_of_custody.log   tamper-evident, hash-chained audit trail
+    Steps_Taken.txt        append-only action log
+
+Parse findings.json for automation, e.g. (PowerShell):
+    (Get-Content "$case\findings.json" | ConvertFrom-Json).verdict

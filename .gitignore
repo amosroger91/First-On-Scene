@@ -1,8 +1,7 @@
+# Case output / evidence (never commit collected data)
 results/
-*.txt
-!README.md
-!CLAUDE.md
-!system_prompt.txt
+cases/
+dist/
 
 # Claude Code specific
 .claude/
@@ -19,7 +18,6 @@ Thumbs.db
 
 # Node.js
 node_modules/
-dist/
 *.log
 npm-debug.log*
 yarn-debug.log*

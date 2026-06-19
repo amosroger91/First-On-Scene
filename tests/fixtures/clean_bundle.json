@@ -1,0 +1,60 @@
+{
+  "schemaVersion": "3.0.0",
+  "metadata": {
+    "caseId": "FOS-20260619-CLEANPC-aa11bb",
+    "collectionTimestampUtc": "2026-06-19T12:00:00.000Z",
+    "targetHostname": "CLEANPC",
+    "platform": "windows",
+    "osVersion": "Windows 11 Pro 26200",
+    "collectorVersion": "3.0.0",
+    "executionMode": "local",
+    "evidenceIntegrityMode": true,
+    "operator": { "user": "MSP\\analyst", "host": "ANALYST01", "tool": "First-On-Scene/3.0.0" }
+  },
+  "artifacts": {
+    "persistence": {
+      "registryRunKeys": [
+        { "hive": "HKLM", "keyPath": "SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Run", "valueName": "SecurityHealth", "valueData": "C:\\Windows\\System32\\SecurityHealthSystray.exe" },
+        { "hive": "HKLM", "keyPath": "SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Run", "valueName": "RtkAudUService", "valueData": "C:\\Program Files\\Realtek\\Audio\\RtkAudUService64.exe -background" }
+      ],
+      "scheduledTasks": [
+        { "taskName": "OneDrive Reporting", "path": "\\", "state": "Ready", "enabled": true, "author": "Microsoft Corporation", "actions": "C:\\Program Files\\Microsoft OneDrive\\OneDrive.exe", "triggers": "Logon" }
+      ],
+      "services": [
+        { "name": "Spooler", "displayName": "Print Spooler", "state": "Running", "startMode": "Auto", "pathName": "C:\\Windows\\System32\\spoolsv.exe" }
+      ],
+      "wmiEventSubscriptions": { "eventFilters": [], "eventConsumers": [], "filterBindings": [] }
+    },
+    "execution": {
+      "processes": [
+        { "processId": 4, "name": "System", "executablePath": "", "commandLine": "", "parentProcessId": 0, "user": "NT AUTHORITY\\SYSTEM" },
+        { "processId": 920, "name": "explorer.exe", "executablePath": "C:\\Windows\\explorer.exe", "commandLine": "C:\\Windows\\Explorer.EXE", "parentProcessId": 800, "user": "CLEANPC\\bob" }
+      ],
+      "processCreationEvents": []
+    },
+    "network": {
+      "connections": [
+        { "protocol": "TCP", "localAddress": "192.168.1.50", "localPort": 51012, "remoteAddress": "20.190.160.20", "remotePort": 443, "state": "Established", "processId": 4321, "processName": "svchost.exe" }
+      ]
+    },
+    "credentialAccess": {
+      "logonEvents": [
+        { "eventId": 4624, "timestamp": "2026-06-19T08:00:00Z", "logonType": 2, "account": "CLEANPC\\bob", "sourceAddress": "127.0.0.1", "message": "Interactive logon" }
+      ],
+      "privilegeEscalationEvents": [],
+      "userCreationEvents": [],
+      "serviceInstallEvents": []
+    },
+    "fileSystem": {
+      "fileMetadata": [
+        { "fileName": "C:\\Users\\bob\\Documents\\report.docx", "size": 23456, "modified": "2026-06-18T10:00:00Z", "accessed": "2026-06-19T09:00:00Z", "created": "2026-06-10T10:00:00Z" }
+      ],
+      "browserArtifacts": []
+    },
+    "powerShellActivity": { "scriptBlockLogs": [] },
+    "antivirusScans": {
+      "defenderScan": { "executed": true, "threatsFound": 0, "threats": [] },
+      "clamavScan": { "executed": false, "threatsFound": 0, "threats": [] }
+    }
+  }
+}

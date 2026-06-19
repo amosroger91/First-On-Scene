@@ -1,113 +1,113 @@
 #!/usr/bin/env node
 /**
- * First-On-Scene CLI Entry Point
- * Cross-platform AI-powered incident response triage toolkit
+ * First-On-Scene CLI (optional analyst-side launcher).
+ *
+ * This is a thin, cross-platform wrapper that invokes the native orchestrator
+ * (scripts/win/fos.ps1 or scripts/nix/fos.sh). The native scripts are the real
+ * engine and have ZERO dependencies; this launcher is a convenience only and is
+ * NOT required to run First-On-Scene.
  */
 
 import { Command } from 'commander';
+import { spawnSync } from 'child_process';
 import * as path from 'path';
+import * as fs from 'fs';
+import Ajv from 'ajv';
 import { PlatformDetector } from './modules/platform';
 
 const program = new Command();
+const pkg = require('../package.json');
+const rootDir = path.resolve(__dirname, '..');
 
-// Get package version
-const packageJson = require('../package.json');
+function runNative(extraArgs: string[]): number {
+  const platform = PlatformDetector.detectPlatform();
+  const scriptDir = PlatformDetector.getScriptDirectory(rootDir);
+  const entry = path.join(scriptDir, PlatformDetector.getEntryScriptName());
+
+  let cmd: string;
+  let args: string[];
+  if (platform === 'windows') {
+    cmd = 'powershell.exe';
+    args = ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', entry, ...extraArgs];
+  } else {
+    cmd = 'bash';
+    args = [entry, ...extraArgs];
+  }
+  const res = spawnSync(cmd, args, { stdio: 'inherit' });
+  return res.status ?? 1;
+}
+
+/** Map cross-platform CLI options onto the platform's native flag style. */
+function nativeArgs(opts: any): string[] {
+  const win = PlatformDetector.detectPlatform() === 'windows';
+  const a: string[] = [];
+  if (opts.mode) a.push(win ? '-Mode' : '--mode', opts.mode);
+  if (opts.bundle) a.push(win ? '-BundlePath' : '--bundle', opts.bundle);
+  if (opts.caseDir) a.push(win ? '-CaseDir' : '--case-dir', opts.caseDir);
+  if (opts.brandName) a.push(win ? '-BrandName' : '--brand', opts.brandName);
+  if (opts.enableLocalAi) a.push(win ? '-EnableLocalAI' : '--enable-local-ai');
+  if (opts.noAction) a.push(win ? '-NoAction' : '--no-action');
+  return a;
+}
 
 program
   .name('fos-triage')
-  .description('AI-Powered Incident Response Triage for Windows/Linux/macOS')
-  .version(packageJson.version);
+  .description('First-On-Scene - cross-platform launcher for the native triage engine')
+  .version(pkg.version);
+
+program
+  .command('run', { isDefault: true })
+  .description('Collect + triage + report + seal (full pipeline)')
+  .option('--brand-name <name>', 'Branding for the report')
+  .option('--case-dir <path>', 'Output case directory')
+  .option('--enable-local-ai', 'Add a local-only Ollama narrative (advisory)')
+  .option('--no-action', 'Do not invoke the decision action scripts')
+  .action((opts) => process.exit(runNative(nativeArgs({ mode: 'full', ...opts }))));
 
 program
   .command('collect')
-  .description('Collect forensic artifacts from a target system')
-  .option('-c, --computer-name <hostname>', 'Target computer hostname (for remote collection)')
-  .option('-l, --local', 'Force local collection (default if no hostname specified)', true)
-  .option('--brand-name <name>', 'Custom brand name for reports', 'First-On-Scene')
-  .option('--logo-path <path>', 'Path to custom logo for reports')
-  .option('--enable-defender', 'Enable Windows Defender if disabled before scan')
-  .option('--run-rkill', 'Run rkill before collection (modifies system state)')
-  .action(async (options) => {
-    console.log('🔍 First-On-Scene - Forensic Data Collection\n');
-
-    try {
-      // Detect platform
-      const platform = PlatformDetector.detectPlatform();
-      console.log(`Platform detected: ${PlatformDetector.getPlatformDisplayName()}`);
-
-      // Platform support check
-      if (platform !== 'windows' && platform !== 'linux' && platform !== 'darwin') {
-        console.error(`❌ Error: Platform ${platform} is not supported.`);
-        process.exit(1);
-      }
-
-      console.log('\n⚠️  Note: Full collection implementation coming in Phase 1.');
-      console.log('   Current Phase 0 establishes the architectural foundation.\n');
-
-      console.log('Options received:');
-      console.log(`  - Target: ${options.computerName || 'localhost (local)'}`);
-      console.log(`  - Brand: ${options.brandName}`);
-      console.log(`  - Enable Defender: ${options.enableDefender || false}`);
-      console.log(`  - Run Rkill: ${options.runRkill || false}`);
-
-      console.log('\n✅ Phase 0 (Architecture Setup) complete!');
-      console.log('   Next: Implement Phase 1 (Node.js Orchestrator Core)');
-
-    } catch (error) {
-      if (error instanceof Error) {
-        console.error(`\n❌ Error: ${error.message}`);
-      }
-      process.exit(1);
-    }
-  });
+  .description('Collect artifacts only (for offline analysis)')
+  .option('--case-dir <path>', 'Output case directory')
+  .action((opts) => process.exit(runNative(nativeArgs({ mode: 'collect', ...opts }))));
 
 program
   .command('analyze')
-  .description('Analyze collected artifacts using AI triage')
-  .option('-i, --input <path>', 'Path to collected artifacts directory', './results')
-  .action(async (options) => {
-    console.log('🤖 First-On-Scene - AI Triage Analysis\n');
-    console.log('⚠️  Analysis implementation coming in Phase 3.');
-    console.log(`   Input directory: ${options.input}\n`);
+  .description('Analyze a previously collected bundle')
+  .requiredOption('--bundle <path>', 'Path to bundle.json')
+  .option('--case-dir <path>', 'Output case directory')
+  .option('--brand-name <name>', 'Branding for the report')
+  .option('--enable-local-ai', 'Add a local-only Ollama narrative (advisory)')
+  .option('--no-action', 'Do not invoke the decision action scripts')
+  .action((opts) => process.exit(runNative(nativeArgs({ mode: 'analyze', ...opts }))));
+
+program
+  .command('validate <bundle>')
+  .description('Validate a bundle.json against the artifact schema')
+  .action((bundle: string) => {
+    const schema = JSON.parse(fs.readFileSync(path.join(rootDir, 'schemas', 'artifact_schema.json'), 'utf-8'));
+    const data = JSON.parse(fs.readFileSync(bundle, 'utf-8'));
+    const ajv = new Ajv({ allErrors: true, strict: false });
+    const validate = ajv.compile(schema);
+    if (validate(data)) {
+      console.log('VALID: bundle conforms to artifact_schema.json');
+      process.exit(0);
+    } else {
+      console.error('INVALID:');
+      for (const e of validate.errors ?? []) console.error(`  ${e.instancePath || '/'} ${e.message}`);
+      process.exit(1);
+    }
   });
 
 program
   .command('info')
-  .description('Display system information and platform detection')
+  .description('Show platform detection and paths')
   .action(() => {
-    console.log('📊 First-On-Scene System Information\n');
-
-    try {
-      const platform = PlatformDetector.detectPlatform();
-      const rootDir = path.resolve(__dirname, '..');
-
-      console.log(`Platform: ${PlatformDetector.getPlatformDisplayName()} (${platform})`);
-      console.log(`Supported: ${PlatformDetector.isPlatformSupported() ? 'Yes' : 'No'}`);
-      console.log(`Shell Executable: ${PlatformDetector.getShellExecutable()}`);
-      console.log(`Script Directory: ${PlatformDetector.getScriptDirectory(rootDir)}`);
-      console.log(`Collection Script: ${PlatformDetector.getCollectionScriptName()}`);
-      console.log(`Node.js Version: ${process.version}`);
-      console.log(`Installation Path: ${rootDir}\n`);
-
-      console.log('📋 Project Status:');
-      console.log('  ✅ Phase 0: Architecture Setup (COMPLETE)');
-      console.log('  ⏳ Phase 1: Node.js Orchestrator Core (PENDING)');
-      console.log('  ⏳ Phase 2: Native Script Refactoring (PENDING)');
-      console.log('  ⏳ Phase 3: AI Triage & Analysis (PENDING)');
-      console.log('  ⏳ Phase 4: Distribution & Packaging (PENDING)\n');
-
-    } catch (error) {
-      if (error instanceof Error) {
-        console.error(`Error: ${error.message}`);
-      }
-      process.exit(1);
-    }
+    console.log(`First-On-Scene ${pkg.version}`);
+    console.log(`Platform:    ${PlatformDetector.getPlatformDisplayName()}`);
+    console.log(`Script dir:  ${PlatformDetector.getScriptDirectory(rootDir)}`);
+    console.log(`Entry:       ${PlatformDetector.getEntryScriptName()}`);
+    console.log(`Node:        ${process.version}`);
+    console.log('Note: the native scripts run standalone; this launcher is optional.');
   });
 
-// Parse command-line arguments
 program.parse(process.argv);
-
-// Show help if no command specified
-if (!process.argv.slice(2).length) {
-  program.outputHelp();
-}

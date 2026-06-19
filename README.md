@@ -1,313 +1,147 @@
 <div align="center">
-  <img src="assets/logo.png" alt="First-On-Scene Logo" width="300"/>
+  <img src="assets/logo.png" alt="First-On-Scene" width="280"/>
   <h1>First-On-Scene</h1>
-  <p><strong>AI-Powered Incident Response Triage for Windows & Linux</strong></p>
+  <p><strong>The free, open-source incident-response triage toolkit for MSPs.</strong></p>
+  <p>Collects forensic artifacts, decides <strong>All Clear / Monitor / Problem Detected</strong> with a deterministic engine, and seals the evidence — <strong>fully offline, CJIS-ready, RMM-native.</strong></p>
 
   <p>
-    <strong>🎯 What it does:</strong> Automatically collects forensic data from Windows and Linux computers, analyzes it using AI, and makes a decisive call: <strong>Problem Detected</strong> or <strong>All Clear</strong>.
-  </p>
-
-  <p>
-    <strong>💡 Why it exists:</strong> When antivirus or monitoring tools trigger alerts, this toolkit acts like a "First Responding Officer"—quickly determining if a real threat exists or if it's a false positive.
-  </p>
-
-  <p>
-    <strong>🏆 Best for:</strong> MSPs, IT professionals, and security teams who need rapid, AI-assisted incident triage across multiple platforms.
+    <img alt="license" src="https://img.shields.io/badge/license-MIT-blue"/>
+    <img alt="platforms" src="https://img.shields.io/badge/platforms-Windows%20%7C%20Linux%20%7C%20macOS-informational"/>
+    <img alt="ai" src="https://img.shields.io/badge/AI-optional%20%26%20local--only-success"/>
+    <img alt="egress" src="https://img.shields.io/badge/network%20egress-zero%20by%20default-success"/>
   </p>
 </div>
 
 ---
 
-## 🚀 Quick Start
+## Why MSP pros keep this in the toolbox
 
-**Run one command. Get instant AI-powered triage.**
+- **Decisive, not noisy.** A deterministic, MITRE ATT&CK-mapped rule engine produces a clear verdict and score — tuned to avoid the false positives that make triage tools cry wolf on healthy machines.
+- **Actually CJIS-ready.** Zero network egress by default. Optional AI is **local-only** (Ollama, loopback-locked). Forensic data never leaves the endpoint. See [CJIS posture](docs/CJIS_COMPLIANCE.md).
+- **Forensically sound.** Every case is sealed with a SHA-256 **manifest** and a tamper-evident, hash-chained **chain of custody**. Change one byte and verification fails.
+- **Zero dependencies on the endpoint.** Pure PowerShell 5.1 on Windows, pure Bash + jq on Linux/macOS. Nothing to install on the box you're triaging.
+- **RMM-native.** Clean exit codes + custom-field output. First-class [NinjaOne](docs/DEPLOYMENT_NINJAONE.md), [generic RMM](docs/DEPLOYMENT_RMM.md), and [air-gapped](docs/DEPLOYMENT_AIRGAPPED.md) deployment.
+- **Free and open source.** MIT. All tools free and open. No API keys, no SaaS, no per-seat cost.
 
-### Prerequisites
+---
 
-1. **Supported OS:**
-    - **Windows:** PowerShell 5.1+
-    - **Linux:** A modern distribution with Bash, `jq`, `systemctl`, `ps`, and `ss`.
-2. **Administrator/Root Privileges** - Required for forensic data collection.
-3. **OpenRouter API Key** (FREE) - Get yours at [openrouter.ai/keys](https://openrouter.ai/keys).
-   - No credit card required
-   - Takes 2 minutes to set up
-   - You'll be prompted on first run
-   - Securely stored in Windows Credential Manager or as an environment variable on Linux.
+## Quick start
 
-### Run It
-
-#### Windows (PowerShell One-Liner)
-**Download and run from GitHub (PowerShell as Administrator):**
+### Windows (PowerShell as Administrator)
 ```powershell
-$d=(Join-Path $env:TEMP "FOS_Run"); New-Item -ItemType Directory -Path $d -Force | Out-Null; iwr "https://github.com/amosroger91/First-On-Scene/archive/refs/heads/main.zip" -OutFile "$d\m.zip" -UseBasicParsing; Expand-Archive -Path "$d\m.zip" -DestinationPath $d -Force; & "$d\First-On-Scene-main\scripts\win\Gather_Info.ps1"
+.\scripts\win\fos.ps1
 ```
 
-#### Linux (Bash One-Liner)
-**Download and run from GitHub:**
+### Linux / macOS (requires jq)
 ```bash
-cd /tmp && curl -L https://github.com/amosroger91/First-On-Scene/archive/refs/heads/main.tar.gz | tar -xz && cd First-On-Scene-main && chmod +x scripts/nix/gather_info.sh && ./scripts/nix/gather_info.sh
+sudo bash scripts/nix/fos.sh
 ```
 
-**🆕 Time-ranged collection (last 24 hours):**
-```powershell
-$start = (Get-Date).AddHours(-24); $d=(Join-Path $env:TEMP "FOS_Run"); New-Item -ItemType Directory -Path $d -Force | Out-Null; iwr "https://github.com/amosroger91/First-On-Scene/archive/refs/heads/main.zip" -OutFile "$d\m.zip" -UseBasicParsing; Expand-Archive -Path "$d\m.zip" -DestinationPath $d -Force; & "$d\First-On-Scene-main\scripts\win\Gather_Info.ps1" -StartTime $start
+That single command runs the whole pipeline and prints a verdict. It exits:
+
+| Exit | Verdict | Meaning |
+|---|---|---|
+| `0` | ALL_CLEAR | nothing actionable |
+| `10` | MONITOR | low-confidence findings worth a look |
+| `20` | PROBLEM_DETECTED | Incident |
+| `21` | PROBLEM_DETECTED | Breach |
+| `1` | error | run failed |
+
+---
+
+## What it produces
+
+Every run creates a **sealed case folder** under `results/<caseId>/`:
+
+```
+bundle.json             Raw collected artifacts (read-only collection)
+findings.json           Deterministic verdict + scored, ATT&CK-mapped findings (machine-readable)
+findings.md             Human-readable findings
+Incident_Report_*.html  Branded, shareable report
+manifest.json           SHA-256 of every evidence file
+chain_of_custody.log    Tamper-evident, hash-chained audit trail
+Steps_Taken.txt         Append-only action log
 ```
 
-**💡 Tip**: See [ONE_LINERS.md](ONE_LINERS.md) for platform-specific commands, time range examples, branding options, and advanced usage.
-
-**What happens automatically:**
-1. ✅ Collects volatile and persistent forensic artifacts.
-2. ✅ Parses and structures the data into a standard JSON format.
-3. ✅ Launches AI triage using OpenRouter's free tier.
-4. ✅ Generates detailed findings report (`results/findings.txt`).
-5. ✅ Makes final decision: **Problem Detected** or **All Clear**.
-6. ✅ Executes custom action scripts for automation (optional).
-
 ---
 
-## 🛡️ Platform Support
+## How it works
 
-**Current Status: Windows & Linux**
-
-First-On-Scene is designed for both **Windows** and **Linux** systems.
-
-### Windows
-- **Shell:** PowerShell 5.1+
-- **Remote Execution:** WinRM
-- **Artifacts:** Registry, WMI, Event Logs, etc.
-- **Secure Storage:** Windows Credential Manager
-
-### Linux
-- **Shell:** Bash
-- **Dependencies:** `jq`, `systemctl`, `ps`, `ss`
-- **Remote Execution:** SSH (planned for future)
-- **Artifacts:** `systemd`, `cron`, `auth.log`, etc.
-- **Secure Storage:** Environment variables (future: Linux Keyring)
-
----
-
-## 🌐 Remote vs. Local Execution
-
-### Windows Remote Execution (Recommended)
-Run from a **clean computer on the same network** to analyze a remote target:
-```powershell
-.\scripts\Gather_Info.ps1 -ComputerName "SuspectPC" -Credential (Get-Credential)
 ```
-**Requirements:**
-- PowerShell Remoting (WinRM) must be enabled on the target computer.
-
-**Why remote execution is better:**
-- ✅ **Avoids contamination**: Malware on the target can't interfere with your analysis tools
-- ✅ **Safer**: Your analysis machine remains clean
-- ✅ **Better evidence integrity**: Collection happens from a trusted source
-- ✅ **Stealth**: Some advanced malware can detect and evade local forensic tools
-
-**Requirements for remote execution:**
-- PowerShell Remoting (WinRM) must be enabled on the target computer
-- Network connectivity between your analysis machine and the target
-- Administrative credentials for the target computer
-
-**Enable WinRM on target computer (run as Administrator):**
-```powershell
-Enable-PSRemoting -Force
+            ┌──────────────────────┐        ┌───────────────────────────┐
+ endpoint   │  COLLECTOR (native)  │ bundle │   ANALYZER (deterministic) │
+ (read-only)│  PowerShell / Bash   ├───────▶│   rule engine + scoring    │
+            │  zero deps, zero net │ .json  │   verdict + classification │
+            └──────────────────────┘        └─────────────┬─────────────┘
+                                                           │
+                          ┌────────────────────────────────┼───────────────────────┐
+                          ▼                                 ▼                        ▼
+                   findings.json / .md              HTML report            decisive action
+                   (+ optional LOCAL AI               (branded)            (All Clear /
+                    narrative, advisory)                                   Problem Detected
+                                                                           + your hook)
 ```
 
-**Ports:**
-- WinRM uses port 5985 (HTTP) or 5986 (HTTPS)
-- Ensure these ports are open on the target's firewall
+- **Collector** runs on the (possibly compromised) endpoint. Read-only, no dependencies, no egress.
+- **Analyzer** runs anywhere — on the endpoint or a clean analyst workstation — and owns the verdict.
+- **AI is optional, local-only, and advisory** — it writes a plain-English narrative and never changes the verdict. [Setup](docs/AI_LOCAL_SETUP.md).
 
-WinRM Auto-Fix:
-First-On-Scene includes automatic WinRM corruption detection and repair. If WinRM is corrupted, the script will attempt to restore it remotely before falling back to local execution. **Note: If WinRM repair fails, the script will proceed with local data collection on the machine where it is executed, rather than the specified remote target.**
-
----
-
-## 🤖 Custom Actions & Automation
-
-After the AI makes its final determination, it executes one of two scripts that you can customize for your environment:
-
-- **Windows:** `scripts/win/Problem_Detected.ps1` or `scripts/win/All_Clear.ps1`
-- **Linux:** `scripts/nix/problem_detected.sh` or `scripts/nix/all_clear.sh`
-
-These scripts can be customized to send alerts, create tickets, isolate systems, or trigger any other workflow.
+Detections live in [`rules/detections.json`](rules/detections.json) — versioned, ATT&CK-mapped, and easy to extend. See [authoring guide](docs/RULES.md).
 
 ---
 
-## 🔍 How It Works: The Triage Process
+## Deployment
 
-**First-On-Scene** parallels how a responding officer handles a crime scene, collecting and analyzing forensic data across multiple categories.
-
-### Forensic Artifacts Collected
-
-**Currently Implemented:**
-- ✅ **Memory Capture** (Optional - use `-CaptureMemory` flag):
-  - Full RAM image via WinPmem - **MOST VOLATILE**
-  - WARNING: Creates very large file (size of installed RAM)
-- ✅ Network TCP Connections (with owning processes) - **Volatile**
-- ✅ Running Processes (with paths, command lines, parent-child relationships) - **Volatile**
-- ✅ Open Files and Handles (open files, SMB sessions, mapped drives) - **Volatile**
-- ✅ Registry Run/RunOnce keys (HKCU/HKLM) - **Persistent**
-- ✅ Scheduled Tasks (all tasks with paths, authors, states, arguments) - **Persistent**
-- ✅ Windows Services (configuration, start modes, executable paths) - **Persistent**
-- ✅ WMI Event Subscriptions (Event Filters, Consumers, Bindings) - **Persistent**
-- ✅ Security Event Logs (Logon, Admin, Process Creation, Service Install, User Creation, Object Access) - **Persistent**
-- ✅ PowerShell Operational Logs (Script Block Logging) - **Persistent**
-- ✅ Browser History Databases (Chrome, Edge, Firefox) - **Persistent**
-- ✅ Prefetch Files (program execution history) - **Persistent**
-- ✅ Jump Lists (recent items accessed per user) - **Persistent**
-- ✅ LNK Files (shortcuts from Recent and Desktop folders) - **Persistent**
-- ✅ MACE Timestamps (Modified, Accessed, Created, Entry metadata) - **Persistent**
-- ✅ Antivirus Scans (Optional - use `-RunRkill` and `-EnableDefender` flags):
-  - ClamAV full system scan (if available, **SKIPPED by default** - use `-RunClamAV` flag to enable)
-  - Windows Defender full scan (only if running OR if `-EnableDefender` flag used)
-  - Rkill execution (ONLY if `-RunRkill` flag used - modifies system state!)
-
-**Linux:**
-- Network Connections
-- Running Processes
-- Cron Jobs
-- Systemd Services
-- Logon Events (`auth.log`, `journalctl`)
-- File Metadata (key system files)
-- Browser Artifact Paths
+| Target | Guide |
+|---|---|
+| **NinjaOne** (custom fields, Conditions, exit codes) | [docs/DEPLOYMENT_NINJAONE.md](docs/DEPLOYMENT_NINJAONE.md) |
+| **Any RMM** (ConnectWise, Datto, Action1, Syncro, Atera, Tactical…) | [docs/DEPLOYMENT_RMM.md](docs/DEPLOYMENT_RMM.md) |
+| **Air-gapped / CJIS network** (offline USB kit) | [docs/DEPLOYMENT_AIRGAPPED.md](docs/DEPLOYMENT_AIRGAPPED.md) |
 
 ---
 
-## ⚙️ Output & Reports
-
-All analysis results are saved to the `results/` directory:
-
-### Generated Files
-
-- **`findings.txt`** - MANDATORY: Structured Markdown report with AI's complete analysis and findings
-- **`Incident_Report_YYYYMMDD_HHMMSS.html`** - Professional, human-readable HTML report
-- **Note on AI-generated summaries:** Executive summaries and recommendations within reports are filtered to remove any tool call syntax generated by the LLM, ensuring clean, readable text.
-
-- **`Info_Results.txt`** - Structured JSON with parsed triage indicators (output from `Parse_Results.ps1`)
-- **`Steps_Taken.txt`** - MANDATORY: Append-only audit log of all actions taken
-- **`config.json`** - Configuration file (target computer, branding, custom script paths)
-- **Raw forensic data** (various JSON files):
-  - `registry_run_keys.json`
-  - `scheduled_tasks.json`
-  - `services_config.json`
-  - `wmi_persistence.json`
-  - `processes_snapshot.json`
-  - `netstat_snapshot.json`
-  - `security_events.json`
-  - `powershell_logs.json`
-  - `file_metadata.json`
-  - `browser_artifacts.json`
-  - `defender_scan_results.txt`
-  - `clamav_scan_results.txt`
-  - `rkill_execution.log`
-
-### Final Action Decision
-
-The AI must make a decisive call:
-
-- **`scripts/Problem_Detected.ps1 [REASON_CODE]`** - Called if classification is a **Breach** or uncontained **Incident**
-  - Argument must be capitalized, concise (e.g., "MALWARE_DETECTED", "RANSOMWARE_ENCRYPTED_FILES", "UNAUTHORIZED_ACCESS")
-  - Displays a critical alert and logs to `results/Steps_Taken.txt`
-
-- **`scripts/All_Clear.ps1`** - Called if classification is a contained **Event** or **False Positive**
-  - Logs the clearance action to `results/Steps_Taken.txt`
-
----
-
-## 🗺️ Automated Workflow
-
-When you run `.\scripts\Gather_Info.ps1`, here's the complete workflow:
-
-1. **Parameter Validation** - Processes command-line arguments (target computer, credentials, custom scripts, branding)
-2. **WinRM Check & Auto-Fix** (Remote only) - Tests PSRemoting and attempts self-healing if WinRM corruption is detected
-3. **Software Dependency Check** (Local only) - Uses Winget to ensure Git, Node.js, and ClamAV are installed
-4. **Pre-Scan Remediation** - Downloads and executes `rkill.exe` to neutralize active malware
-5. **Data Collection** - `Gather_Info.ps1` collects comprehensive forensic artifacts (local or remote)
-6. **Parsing** - `Parse_Results.ps1` automatically structures data into `results/Info_Results.txt`
-7. **API Token Validation** - Retrieves or prompts for OpenRouter API key (stored in Windows Credential Manager)
-8. **AI Analysis** - The LLM (via OpenRouter/qwen CLI) analyzes `Info_Results.txt` and raw forensic data
-9. **LLM Error Diagnostics** - If script errors occur, the LLM provides diagnostic assistance
-10. **Report Generation** - AI writes `findings.txt`, and `Generate_Report.ps1` creates HTML reports
-11. **Final Decision & Action** - AI executes either `Problem_Detected.ps1` or `All_Clear.ps1`
-
-**Everything is logged to `results/Steps_Taken.txt` for a complete audit trail.**
-
----
-
-## 🤖 Why OpenRouter? Free AI Analysis
-
-**First-On-Scene** uses [OpenRouter](https://openrouter.ai) to provide **completely free** AI-powered incident triage. This requires a one-time, 2-minute setup to get a free API key. This is the best engineering decision to keep the tool free and accessible.
-
----
-
-## 🔧 Advanced Options
-
-### Command-Line Parameters
-
-**`Gather_Info.ps1` accepts the following parameters:**
+## Common options
 
 ```powershell
-.\scripts\Gather_Info.ps1 `
-    -ComputerName "RemotePC" `
-    -Credential (Get-Credential) `
-    -StartTime "2025-01-15 08:00:00" `
-    -EndTime "2025-01-15 17:00:00" `
-    -CustomProblemScript "C:\MyScripts\SendAlert.ps1" `
-    -CustomAllClearScript "C:\MyScripts\ClearAlert.ps1" `
-    -BrandName "Acme Security" `
-    -LogoPath "C:\MyLogo.png" `
-    -RunRkill `
-    -EnableDefender `
-    -CaptureMemory
+# Branding + custom response hooks
+.\scripts\win\fos.ps1 -BrandName "Acme SOC" -CustomProblemScript C:\rmm\alert.ps1
+
+# Collect only (pull the bundle for offline analysis on a clean workstation)
+.\scripts\win\fos.ps1 -Mode collect
+
+# Analyze a previously collected bundle
+.\scripts\win\fos.ps1 -Mode analyze -BundlePath .\results\<case>\bundle.json
+
+# Add a LOCAL AI narrative (requires Ollama on localhost; stays on the box)
+.\scripts\win\fos.ps1 -EnableLocalAI
 ```
-
-| Parameter | Description | Default |
-| :--- | :--- | :--- |
-| `-ComputerName` | Target computer name for analysis | `"localhost"` (local execution) |
-| `-Credential` | Credentials for remote execution | Current user credentials |
-| `-StartTime` | **🆕 Start time for time-ranged collection** (e.g., `"2025-01-15 08:00:00"` or `(Get-Date).AddHours(-24)`) | None (collects all available data) |
-| `-EndTime` | **🆕 End time for time-ranged collection** (e.g., `"2025-01-15 17:00:00"`) | None (collects up to current time) |
-| `-CustomProblemScript` | Path to custom PowerShell script for problem detection | Uses default `Problem_Detected.ps1` |
-| `-CustomAllClearScript` | Path to custom PowerShell script for all clear | Uses default `All_Clear.ps1` |
-| `-BrandName` | Custom brand name for reports | `"First-On-Scene"` |
-| `-LogoPath` | Path to custom logo image for reports | None |
-| `-RunRkill` | **⚠️ Execute rkill.exe to terminate malware processes (MODIFIES SYSTEM STATE)** | `$false` (SKIPPED for evidence integrity) |
-| `-EnableDefender` | **⚠️ Auto-enable Windows Defender if stopped (MAY ALERT MALWARE)** | `$false` (SKIPPED for stealth) |
-| `-RunClamAV` | **⚠️ Execute ClamAV full system scan (can be very time-consuming and prone to permission issues)** | `$false` (SKIPPED by default) |
-| `-CaptureMemory` | **⚠️ Capture full RAM image via WinPmem (VERY LARGE FILE - size of installed RAM)** | `$false` (SKIPPED to save time/disk space) |
-
-**Example with custom branding:**
-```powershell
-.\scripts\Gather_Info.ps1 -BrandName "YourCompany Security Response" -LogoPath "C:\logo.png"
-```
-
-**🆕 Example with time-ranged collection (targeted investigation):**
-```powershell
-# Investigate last 24 hours
-.\scripts\Gather_Info.ps1 -StartTime (Get-Date).AddHours(-24)
-
-# Investigate specific date/time range
-.\scripts\Gather_Info.ps1 -StartTime "2025-01-15 08:00:00" -EndTime "2025-01-15 17:00:00"
-
-# Combine with remote computer
-.\scripts\Gather_Info.ps1 -ComputerName "KS-BENCH01" -StartTime (Get-Date).AddDays(-7)
-```
-
-**Why use time ranges?**
-- 🎯 **Targeted investigation**: Focus on known incident timeframes without noise from unrelated events
-- 📊 **Reduce data volume**: Collect only relevant event logs for faster analysis
-- 🕒 **Scope compliance**: Comply with investigation scope requirements for specific time windows
-- 🔍 **Correlate events**: Analyze all activity within specific operational windows (e.g., business hours)
+Linux equivalents use `--brand`, `--mode collect|analyze`, `--bundle`, `--enable-local-ai`.
 
 ---
 
-## 📄 License
+## Verifying evidence integrity
 
-This project is open source. See the LICENSE file for details.
+```powershell
+Import-Module .\scripts\win\FOS.Common.psm1
+Test-FosManifest -CaseDir .\results\<case>   # SHA-256 of every evidence file
+Test-FosCoc      -CaseDir .\results\<case>   # tamper-evident chain of custody
+```
+```bash
+. scripts/nix/fos-common.sh
+fos_manifest_verify results/<case>
+fos_coc_verify      results/<case>
+```
 
 ---
 
-## 🔗 Links
+## Documentation
 
-- **OpenRouter**: https://openrouter.ai
-- **Get API Key**: https://openrouter.ai/keys (free, no credit card)
-- **GitHub Issues**: https://github.com/amosroger91/First-On-Scene/issues
+- [Architecture](docs/ARCHITECTURE.md)
+- [CJIS compliance posture](docs/CJIS_COMPLIANCE.md)
+- [Writing detection rules](docs/RULES.md)
+- [Local AI setup (Ollama)](docs/AI_LOCAL_SETUP.md)
+- [Changelog](CHANGELOG.md)
+
+## License
+
+MIT — see [LICENSE](LICENSE). Free and open source, forever.

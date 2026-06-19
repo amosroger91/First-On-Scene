@@ -64,20 +64,20 @@ export class PlatformDetector {
   }
 
   /**
-   * Get the main data collection script name for the current platform
-   * @returns Script filename
+   * Get the native orchestrator entry-point script for the current platform.
+   * @returns Script filename (fos.ps1 on Windows, fos.sh on Linux/macOS)
    */
-  static getCollectionScriptName(): string {
+  static getEntryScriptName(): string {
     const platform = this.detectPlatform();
 
     switch (platform) {
       case 'windows':
-        return 'Gather_Info.ps1';
+        return 'fos.ps1';
       case 'linux':
       case 'darwin':
-        return 'gather_info.sh';
+        return 'fos.sh';
       default:
-        throw new Error(`No collection script defined for platform: ${platform}`);
+        throw new Error(`No entry script defined for platform: ${platform}`);
     }
   }
 
