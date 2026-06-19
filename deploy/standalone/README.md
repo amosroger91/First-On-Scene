@@ -20,6 +20,7 @@ CJIS, copy the single file to the host instead of using the URL.
 | Parameter | Purpose |
 |---|---|
 | `-ExpectedRemoteTools` | Comma-separated allow-list of sanctioned remote-access/RMM agents (e.g. `'NinjaOne,ScreenConnect'`). Anything else found is flagged UNAUTHORIZED. |
+| `-Deep` | Adds Prefetch execution evidence + a possible-injection scan (unsigned modules loaded into processes). Slower; run elevated for full coverage. |
 | `-CaseDir` | Output case folder (default `C:\ProgramData\FirstOnScene\cases\<caseId>`). |
 | `-BrandName` | Branding on the HTML report. |
 | `-StartTime` / `-EndTime` | Event-log time window. |

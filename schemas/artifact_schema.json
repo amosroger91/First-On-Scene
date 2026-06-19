@@ -95,6 +95,50 @@
             }
           }
         },
+        "securityPosture": {
+          "type": "object",
+          "description": "Security-product health and tamper state.",
+          "properties": {
+            "defender": {
+              "type": "object",
+              "properties": {
+                "available": { "type": "boolean" },
+                "realTimeEnabled": { "type": "boolean" },
+                "antivirusEnabled": { "type": "boolean" },
+                "tamperProtectionEnabled": { "type": "boolean" },
+                "exclusionPaths": { "type": "array", "items": { "type": "string" } },
+                "exclusionExtensions": { "type": "array", "items": { "type": "string" } },
+                "exclusionProcesses": { "type": "array", "items": { "type": "string" } }
+              }
+            }
+          }
+        },
+        "accessControl": {
+          "type": "object",
+          "description": "Account and remote-access posture (context).",
+          "properties": {
+            "localAdmins": { "type": "array", "items": { "type": "string" } },
+            "rdpEnabled": { "type": "boolean" },
+            "shares": { "type": "array", "items": { "type": "string" } }
+          }
+        },
+        "defenseEvasion": {
+          "type": "object",
+          "properties": {
+            "logClearEvents": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "eventId": { "type": "integer" },
+                  "timestamp": { "type": "string" },
+                  "log": { "type": "string" },
+                  "message": { "type": "string" }
+                }
+              }
+            }
+          }
+        },
         "persistence": {
           "type": "object",
           "properties": {
@@ -146,6 +190,19 @@
                 "filterBindings": { "type": "array", "items": { "type": "object" } }
               }
             },
+            "asep": {
+              "type": "array",
+              "description": "Anomalous auto-start extensibility points (only deviations are recorded).",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "category": { "type": "string", "description": "IFEO | AppInitDLLs | Winlogon | Accessibility" },
+                  "location": { "type": "string" },
+                  "name": { "type": "string" },
+                  "value": { "type": "string" }
+                }
+              }
+            },
             "cronJobs": {
               "type": "array",
               "items": {
@@ -195,7 +252,34 @@
                   "executablePath": { "type": "string" },
                   "commandLine": { "type": "string" },
                   "parentProcessId": { "type": "integer" },
-                  "user": { "type": "string" }
+                  "user": { "type": "string" },
+                  "signatureStatus": { "type": "string", "description": "Valid | NotSigned | HashMismatch | UnknownError | NotApplicable" },
+                  "signer": { "type": "string" },
+                  "sha256": { "type": "string" },
+                  "imageDeleted": { "type": "boolean", "description": "True if the process image path no longer exists on disk." }
+                }
+              }
+            },
+            "prefetch": {
+              "type": "array",
+              "description": "Prefetch entries (execution evidence; -Deep).",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "name": { "type": "string" },
+                  "lastRunUtc": { "type": "string" }
+                }
+              }
+            },
+            "injectedModules": {
+              "type": "array",
+              "description": "Unsigned modules loaded into processes (possible injection; -Deep).",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "process": { "type": "string" },
+                  "module": { "type": "string" },
+                  "signatureStatus": { "type": "string" }
                 }
               }
             },

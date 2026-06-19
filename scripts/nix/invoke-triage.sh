@@ -72,6 +72,16 @@ fos_coc_add "$CASEDIR" "ANALYSIS_START" "ruleset=$("$JQ" -r '.rulesetVersion' "$
       [ ($bundle.artifacts.remoteAccess.tools // [])[] | select(.authorized==false) ]
     elif $id=="FOS-RAT-002" then
       [ ($bundle.artifacts.remoteAccess.tools // [])[] | select(.authorized==true) ]
+    elif $id=="FOS-DEF-001" then
+      (($bundle.artifacts.securityPosture.defender) as $d |
+       if ($d.available==true and $d.realTimeEnabled==false) then [{realTimeEnabled:false}] else [] end)
+    elif $id=="FOS-DEF-002" then
+      (($bundle.artifacts.securityPosture.defender) as $d |
+       (($d.exclusionPaths // [])+($d.exclusionExtensions // [])+($d.exclusionProcesses // [])) as $ex |
+       if (($ex|length)>0) then [{paths:$d.exclusionPaths, extensions:$d.exclusionExtensions, processes:$d.exclusionProcesses}] else [] end)
+    elif $id=="FOS-DEF-003" then
+      (($bundle.artifacts.securityPosture.defender) as $d |
+       if ($d.available==true and $d.tamperProtectionEnabled==false) then [{tamperProtectionEnabled:false}] else [] end)
     else [] end;
   {info:0,low:1,medium:2,high:3,critical:4} as $sevrank |
   {info:1,low:1,medium:2,high:3,critical:3} as $cap |

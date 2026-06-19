@@ -29,6 +29,12 @@ $p="$env:TEMP\Invoke-FosTriage.ps1"; iwr "https://raw.githubusercontent.com/amos
 > agents aren't flagged. Everything else — AnyDesk, TeamViewer, RustDesk, Splashtop, an unexpected
 > LabTech, etc. — gets called out as **UNAUTHORIZED**.
 
+By default it runs a fast pass that also checks **Defender health/tamper state**, **code signatures
++ SHA-256 of every running process**, **autostart hijacks** (IFEO / AppInit / Winlogon / sticky-keys
+backdoors), and **log-clear events**. Add **`-Deep`** for Prefetch execution evidence and a
+possible-injection scan (unsigned modules loaded into running processes) — a minute or two more, still
+no dependencies. (Run as Administrator/SYSTEM for full coverage.)
+
 It prints a console verdict like:
 
 ```

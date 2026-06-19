@@ -34,6 +34,7 @@ param(
     [string]$CustomProblemScript,
     [string]$CustomAllClearScript,
     [string]$ExpectedRemoteTools = '',
+    [switch]$Deep,
     [switch]$NoAction
 )
 $ErrorActionPreference = 'Stop'
@@ -48,6 +49,7 @@ try {
         if ($StartTime) { $collectArgs['StartTime'] = $StartTime }
         if ($EndTime)   { $collectArgs['EndTime']   = $EndTime }
         if ($ExpectedRemoteTools) { $collectArgs['ExpectedRemoteTools'] = $ExpectedRemoteTools }
+        if ($Deep) { $collectArgs['Deep'] = $true }
         $BundlePath = & (Join-Path $here 'Collect-Artifacts.ps1') @collectArgs | Select-Object -Last 1
         if (-not $CaseDir) { $CaseDir = Split-Path -Parent $BundlePath }
     } else {

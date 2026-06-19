@@ -25,7 +25,8 @@ param(
     [datetime]$StartTime,
     [datetime]$EndTime,
     [int]$MaxEvents = 1000,
-    [string]$ExpectedRemoteTools = ''
+    [string]$ExpectedRemoteTools = '',
+    [switch]$Deep
 )
 
 $ErrorActionPreference = 'Stop'
@@ -256,6 +257,90 @@ try {
     }
 } catch { Add-CollErr 'remoteAccess' $_.Exception.Message }
 
+# --- Security posture: Microsoft Defender health & tamper state ---
+$defenderPosture = [ordered]@{ available=$false; realTimeEnabled=$null; antivirusEnabled=$null; tamperProtectionEnabled=$null; exclusionPaths=@(); exclusionExtensions=@(); exclusionProcesses=@() }
+try {
+    $st = Get-MpComputerStatus -ErrorAction Stop
+    $pf = Get-MpPreference -ErrorAction SilentlyContinue
+    $defenderPosture.available = $true
+    $defenderPosture.realTimeEnabled = [bool]$st.RealTimeProtectionEnabled
+    $defenderPosture.antivirusEnabled = [bool]$st.AntivirusEnabled
+    $defenderPosture.tamperProtectionEnabled = [bool]$st.IsTamperProtected
+    if ($pf) { $defenderPosture.exclusionPaths=@($pf.ExclusionPath|Where-Object{$_}); $defenderPosture.exclusionExtensions=@($pf.ExclusionExtension|Where-Object{$_}); $defenderPosture.exclusionProcesses=@($pf.ExclusionProcess|Where-Object{$_}) }
+} catch { Add-CollErr 'securityPosture' "Defender status unavailable: $($_.Exception.Message)" }
+
+# --- Process signature + SHA-256 + image-deleted (dedup by path) ---
+try {
+    $sigCache=@{}
+    foreach ($pr in $processes) {
+        $path=[string]$pr.executablePath
+        $pr['signatureStatus']=''; $pr['signer']=''; $pr['sha256']=''; $pr['imageDeleted']=$false
+        if ($path -match '^[A-Za-z]:\\') {
+            if (Test-Path -LiteralPath $path) {
+                if (-not $sigCache.ContainsKey($path)) {
+                    $s=''; $signer=''; $hash=''
+                    try { $sig=Get-AuthenticodeSignature -LiteralPath $path -ErrorAction SilentlyContinue; if($sig){$s=[string]$sig.Status; if($sig.SignerCertificate){$signer=$sig.SignerCertificate.Subject}} } catch {}
+                    try { $hash=(Get-FileHash -LiteralPath $path -Algorithm SHA256 -ErrorAction SilentlyContinue).Hash.ToLower() } catch {}
+                    $sigCache[$path]=@{status=$s;signer=$signer;sha256=$hash}
+                }
+                $pr['signatureStatus']=$sigCache[$path].status; $pr['signer']=$sigCache[$path].signer; $pr['sha256']=$sigCache[$path].sha256
+            } else { $pr['imageDeleted']=$true }
+        }
+    }
+} catch { Add-CollErr 'processSignatures' $_.Exception.Message }
+
+# --- ASEP: high-value autostart hijacks (only anomalies recorded) ---
+$asep = New-Object System.Collections.ArrayList
+try {
+    $ifeoRoot='HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Image File Execution Options'
+    $accessib='sethc\.exe|utilman\.exe|osk\.exe|magnify\.exe|narrator\.exe|displayswitch\.exe|atbroker\.exe'
+    if (Test-Path $ifeoRoot) {
+        foreach ($k in (Get-ChildItem $ifeoRoot -ErrorAction SilentlyContinue)) {
+            $dbg=(Get-ItemProperty -Path $k.PSPath -Name Debugger -ErrorAction SilentlyContinue).Debugger
+            if ($dbg) { $cat=if($k.PSChildName -match $accessib){'Accessibility'}else{'IFEO'}; [void]$asep.Add([ordered]@{category=$cat;location=$k.PSChildName;name='Debugger';value=[string]$dbg}) }
+        }
+    }
+    foreach ($w in @('HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Windows','HKLM:\SOFTWARE\Wow6432Node\Microsoft\Windows NT\CurrentVersion\Windows')) {
+        $ai=(Get-ItemProperty -Path $w -Name AppInit_DLLs -ErrorAction SilentlyContinue).AppInit_DLLs
+        if ($ai -and $ai.Trim()) { [void]$asep.Add([ordered]@{category='AppInitDLLs';location=$w;name='AppInit_DLLs';value=[string]$ai}) }
+    }
+    $wl='HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Winlogon'
+    $shell=(Get-ItemProperty -Path $wl -Name Shell -ErrorAction SilentlyContinue).Shell
+    $userinit=(Get-ItemProperty -Path $wl -Name Userinit -ErrorAction SilentlyContinue).Userinit
+    if ($shell -and $shell -notmatch '^explorer\.exe\s*$') { [void]$asep.Add([ordered]@{category='Winlogon';location=$wl;name='Shell';value=[string]$shell}) }
+    if ($userinit -and $userinit -notmatch '(?i)^C:\\Windows\\system32\\userinit\.exe,?\s*$') { [void]$asep.Add([ordered]@{category='Winlogon';location=$wl;name='Userinit';value=[string]$userinit}) }
+} catch { Add-CollErr 'asep' $_.Exception.Message }
+
+# --- Access control posture (context) ---
+$accessControl=[ordered]@{ localAdmins=@(); rdpEnabled=$null; shares=@() }
+try {
+    try { $accessControl.localAdmins=@(Get-LocalGroupMember -Group 'Administrators' -ErrorAction Stop | ForEach-Object { [string]$_.Name }) }
+    catch { $accessControl.localAdmins=@((net localgroup administrators) 2>$null | Where-Object { $_ -and $_ -notmatch '----|completed|^Members|^Alias|^Comment' }) }
+    $deny=(Get-ItemProperty -Path 'HKLM:\SYSTEM\CurrentControlSet\Control\Terminal Server' -Name fDenyTSConnections -ErrorAction SilentlyContinue).fDenyTSConnections
+    $accessControl.rdpEnabled=($deny -eq 0)
+    $accessControl.shares=@(Get-CimInstance Win32_Share -ErrorAction SilentlyContinue | Where-Object { $_.Name -notmatch '\$$' } | ForEach-Object { "$($_.Name) -> $($_.Path)" })
+} catch { Add-CollErr 'accessControl' $_.Exception.Message }
+
+# --- Log tampering: Security(1102)/System(104) cleared ---
+$logClear=New-Object System.Collections.ArrayList
+foreach ($spec in @(@{log='Security';id=1102},@{log='System';id=104})) {
+    $f=@{LogName=$spec.log;Id=$spec.id}; if($StartTime){$f['StartTime']=$StartTime}; if($EndTime){$f['EndTime']=$EndTime}
+    try { foreach($e in (Get-WinEvent -FilterHashtable $f -MaxEvents 20 -ErrorAction Stop)){ [void]$logClear.Add([ordered]@{eventId=$spec.id;timestamp=$e.TimeCreated.ToUniversalTime().ToString('o');log=$spec.log;message=(($e.Message -split "`n"|Select-Object -First 2) -join ' ')}) } } catch {}
+}
+
+# --- Deep-mode artifacts: prefetch + possible-injection modules ---
+$prefetch=New-Object System.Collections.ArrayList
+$injectedModules=New-Object System.Collections.ArrayList
+if ($Deep) {
+    try { $pfDir="$env:windir\Prefetch"; if(Test-Path $pfDir){ Get-ChildItem -LiteralPath $pfDir -Filter *.pf -ErrorAction SilentlyContinue|Sort-Object LastWriteTimeUtc -Descending|Select-Object -First 300|ForEach-Object{ [void]$prefetch.Add([ordered]@{name=$_.Name;lastRunUtc=$_.LastWriteTimeUtc.ToString('o')}) } } } catch { Add-CollErr 'prefetch' $_.Exception.Message }
+    try {
+        $modCache=@{}
+        foreach ($p in (Get-Process -ErrorAction SilentlyContinue)) {
+            try { foreach ($m in $p.Modules) { $mp=$m.FileName; if ($mp -match '\\(Users|Temp|AppData|ProgramData)\\') { if(-not $modCache.ContainsKey($mp)){ $stt='';try{$stt=[string](Get-AuthenticodeSignature -LiteralPath $mp -ErrorAction SilentlyContinue).Status}catch{}; $modCache[$mp]=$stt }; if($modCache[$mp] -ne 'Valid'){ [void]$injectedModules.Add([ordered]@{process=$p.ProcessName;module=$mp;signatureStatus=$modCache[$mp]}) } } } } catch {}
+        }
+    } catch { Add-CollErr 'injectedModules' $_.Exception.Message }
+}
+
 # --- Assemble bundle ---
 $op = Get-FosOperator
 $timeRange = $null
@@ -283,15 +368,21 @@ $bundle = [ordered]@{
     }
     artifacts = [ordered]@{
         remoteAccess = [ordered]@{ tools = @($remoteTools) }
+        securityPosture = [ordered]@{ defender = $defenderPosture }
+        accessControl = $accessControl
+        defenseEvasion = [ordered]@{ logClearEvents = @($logClear) }
         persistence = [ordered]@{
             registryRunKeys = @($runKeys)
             scheduledTasks  = @($tasks)
             services        = @($services)
             wmiEventSubscriptions = $wmi
+            asep = @($asep)
         }
         execution = [ordered]@{
             processes = @($processes)
             processCreationEvents = @()
+            prefetch = @($prefetch)
+            injectedModules = @($injectedModules)
         }
         network = [ordered]@{ connections = @($connections) }
         credentialAccess = [ordered]@{

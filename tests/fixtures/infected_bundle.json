@@ -18,7 +18,14 @@
         { "tool": "NinjaOne (NinjaRMM)", "evidence": "service", "detail": "NinjaRMMAgent", "authorized": true }
       ]
     },
+    "securityPosture": {
+      "defender": { "available": true, "realTimeEnabled": false, "antivirusEnabled": true, "tamperProtectionEnabled": false, "exclusionPaths": ["C:\\Users\\bob\\AppData"], "exclusionExtensions": [], "exclusionProcesses": [] }
+    },
+    "defenseEvasion": {
+      "logClearEvents": [ { "eventId": 1102, "timestamp": "2026-06-19T11:59:30Z", "log": "Security", "message": "The audit log was cleared." } ]
+    },
     "persistence": {
+      "asep": [ { "category": "Accessibility", "location": "sethc.exe", "name": "Debugger", "value": "C:\\Windows\\Temp\\beacon.exe" } ],
       "registryRunKeys": [
         { "hive": "HKCU", "keyPath": "SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Run", "valueName": "Updater", "valueData": "C:\\Users\\bob\\AppData\\Roaming\\svchost.exe" }
       ],
@@ -36,7 +43,7 @@
     },
     "execution": {
       "processes": [
-        { "processId": 6610, "name": "beacon.exe", "executablePath": "C:\\Windows\\Temp\\beacon.exe", "commandLine": "beacon.exe -c1", "parentProcessId": 500, "user": "VICTIM01\\bob" }
+        { "processId": 6610, "name": "beacon.exe", "executablePath": "C:\\Windows\\Temp\\beacon.exe", "commandLine": "beacon.exe -c1", "parentProcessId": 500, "user": "VICTIM01\\bob", "signatureStatus": "NotSigned" }
       ],
       "processCreationEvents": [
         { "eventId": 4688, "timestamp": "2026-06-19T11:55:00Z", "newProcessName": "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe", "commandLine": "powershell -nop -w hidden -enc ...", "parentProcessName": "C:\\Program Files\\Microsoft Office\\root\\Office16\\WINWORD.EXE", "user": "VICTIM01\\bob" }

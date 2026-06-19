@@ -12,7 +12,7 @@
     PowerShell 5.1+ compatible. No third-party modules. No network calls.
 #>
 
-$script:FosEngineVersion = '3.1.0'
+$script:FosEngineVersion = '3.2.0'
 
 function Get-FosEngineVersion { $script:FosEngineVersion }
 

@@ -134,6 +134,23 @@ function Invoke-FosBuiltin {
             $t = @(Resolve-FosPath $Bundle 'artifacts.remoteAccess.tools')
             return @($t | Where-Object { $_ -and ($_.authorized -eq $true) })
         }
+        'FOS-DEF-001' {
+            $d = Resolve-FosPath $Bundle 'artifacts.securityPosture.defender'
+            if ($d -and ($d.available -eq $true) -and ($d.realTimeEnabled -eq $false)) { return @([pscustomobject]@{ realTimeEnabled=$false; antivirusEnabled=$d.antivirusEnabled }) }
+            return @()
+        }
+        'FOS-DEF-002' {
+            $d = Resolve-FosPath $Bundle 'artifacts.securityPosture.defender'
+            if (-not $d) { return @() }
+            $ex = @($d.exclusionPaths) + @($d.exclusionExtensions) + @($d.exclusionProcesses)
+            if (@($ex | Where-Object { $_ }).Count -gt 0) { return @([pscustomobject]@{ paths=$d.exclusionPaths; extensions=$d.exclusionExtensions; processes=$d.exclusionProcesses }) }
+            return @()
+        }
+        'FOS-DEF-003' {
+            $d = Resolve-FosPath $Bundle 'artifacts.securityPosture.defender'
+            if ($d -and ($d.available -eq $true) -and ($d.tamperProtectionEnabled -eq $false)) { return @([pscustomobject]@{ tamperProtectionEnabled=$false }) }
+            return @()
+        }
         default { return @() }
     }
 }

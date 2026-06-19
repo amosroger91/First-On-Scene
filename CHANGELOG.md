@@ -1,5 +1,27 @@
 # Changelog
 
+## 3.2.0 - Deeper compromise checks (Tier A default + `-Deep`)
+
+### Added (default - cheap native reads, big signal)
+- **Defender health & tamper state** (`FOS-DEF-001/002/003`): real-time protection OFF,
+  tamper protection OFF, and configured exclusions (paths/extensions/processes).
+- **Process integrity** (`FOS-EXE-003/004`): Authenticode signature + SHA-256 for every running
+  binary; flags unsigned executables from user/temp paths and processes whose on-disk image was deleted.
+- **ASEP hijacks** (`FOS-PER-005..008`): IFEO debuggers, AppInit_DLLs, Winlogon Shell/Userinit, and
+  **accessibility/sticky-keys backdoors** (sethc/utilman/osk) - the last escalates to Breach.
+- **Log-tamper detection** (`FOS-AF-002`): Security (1102) / System (104) log-clear events.
+- **Access-control context**: local administrators, RDP-enabled state, non-default shares.
+
+### Added (`-Deep` - a minute or two more, still no dependencies)
+- **Prefetch** execution evidence and a **possible-injection scan** (`FOS-EXE-005`): unsigned modules
+  loaded from user/temp paths into running processes.
+
+### Notes
+- Wired into the Windows + Linux analyzers and the standalone; clean/infected fixture parity preserved
+  across both platforms. `-Deep` artifacts (Prefetch, module enumeration) need elevation for full coverage.
+- The deepest layers (full memory image / disk imaging / firmware) remain a documented offline-DFIR
+  escalation path, not part of the fast live triage. See README "how deep" discussion.
+
 ## 3.1.0 - Single-file "suspect a box is compromised" triage
 
 ### Added
