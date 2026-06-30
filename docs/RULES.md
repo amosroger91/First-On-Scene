@@ -28,7 +28,7 @@ generically, so adding coverage is a data change — no code required for `match
 
 | Field | Notes |
 |---|---|
-| `id` | Stable, unique. Convention: `FOS-<AREA>-<NNN>` (PER, EXE, NET, PSH, CRD, AF, AV, RAN, NIX). |
+| `id` | Stable, unique. Convention: `FOS-<AREA>-<NNN>` (PER, EXE, NET, PSH, CRD, AF, AV, RAN, NIX, EXF=exfiltration/egress, COL=collection/staging). |
 | `selector` | Dotted path into the bundle to an **array**. The rule runs once per array item. |
 | `match` | `all` = every condition true (AND); `any` = at least one (OR). |
 | `conditions` | `field` is a property of each item; `op` + `value` define the test. |

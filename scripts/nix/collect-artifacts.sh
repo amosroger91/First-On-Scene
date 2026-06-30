@@ -403,6 +403,98 @@ CLAM_THREATS="$(printf '%s\n' "$CLAM_HITS" | "$JQ" -R -s 'split("\n")|map(select
 CLAMAV_JSON="$("$JQ" -n --argjson present "$CLAM_PRESENT" --argjson threats "$CLAM_THREATS" \
   '{executed:$present, threatsFound:($threats|length), threats:$threats}' 2>/dev/null || echo '{"executed":false,"threatsFound":0,"threats":[]}')"
 
+# --- Exfiltration / data-theft signals (read-only; mirror of the Windows collector) ---
+# Shared user-writable landing/staging zones across all home directories.
+DIRS_FILE="$TMP/userdirs.txt"; : > "$DIRS_FILE"
+for base in /home /Users; do
+  [ -d "$base" ] || continue
+  for u in "$base"/*; do
+    [ -d "$u" ] || continue
+    for sub in Downloads Desktop Documents .cache; do
+      [ -d "$u/$sub" ] && printf '%s\n' "$u/$sub" >> "$DIRS_FILE"
+    done
+  done
+done
+[ -d /root/Downloads ] && printf '%s\n' /root/Downloads >> "$DIRS_FILE"
+printf '%s\n%s\n' /tmp /var/tmp >> "$DIRS_FILE"
+
+# Download provenance: Linux records a downloaded file's origin in the user.xdg.origin.url xattr.
+: > "$TMP/dlprov.jsonl"
+if command -v getfattr >/dev/null 2>&1; then
+  while IFS= read -r d; do
+    [ -n "$d" ] && [ -d "$d" ] || continue
+    find "$d" -maxdepth 1 -type f 2>/dev/null | head -n 500 | while IFS= read -r f; do
+      url="$(getfattr -n user.xdg.origin.url --only-values "$f" 2>/dev/null)"
+      [ -n "$url" ] || continue
+      hostpart="$(printf '%s' "$url" | sed -n 's#^[a-zA-Z][a-zA-Z0-9+.-]*://\([^/:?#]*\).*#\1#p')"
+      sz="$(wc -c <"$f" 2>/dev/null | tr -d ' ')"
+      "$JQ" -cn --arg fn "$f" --arg url "$url" --arg host "$hostpart" --argjson sz "${sz:-0}" \
+        '{fileName:$fn, sourceUrl:$url, referrerUrl:"", sourceHost:$host, zoneId:"", sizeBytes:$sz, modifiedUtc:""}' >> "$TMP/dlprov.jsonl" 2>/dev/null
+    done
+  done < "$DIRS_FILE"
+fi
+"$JQ" -s '.' "$TMP/dlprov.jsonl" > "$TMP/dlprov.json" 2>/dev/null || echo "$emptyarr" > "$TMP/dlprov.json"
+
+# Archive staging: recently-modified archives in user/temp paths (last 14 days).
+: > "$TMP/archives.jsonl"
+while IFS= read -r d; do
+  [ -n "$d" ] && [ -d "$d" ] || continue
+  find "$d" -maxdepth 1 -type f \( -iname '*.zip' -o -iname '*.rar' -o -iname '*.7z' -o -iname '*.tar' \
+       -o -iname '*.gz' -o -iname '*.tgz' -o -iname '*.cab' -o -iname '*.iso' \) -mtime -14 2>/dev/null | head -n 200 | while IFS= read -r f; do
+    sz="$(wc -c <"$f" 2>/dev/null | tr -d ' ')"
+    "$JQ" -cn --arg fn "$f" --argjson sz "${sz:-0}" \
+      '{fileName:$fn, sizeBytes:$sz, createdUtc:"", modifiedUtc:"", ageMinutes:0}' >> "$TMP/archives.jsonl" 2>/dev/null
+  done
+done < "$DIRS_FILE"
+"$JQ" -s '.' "$TMP/archives.jsonl" > "$TMP/archives.json" 2>/dev/null || echo "$emptyarr" > "$TMP/archives.json"
+
+# Transfer-tool inventory: bulk data-egress utilities that are not default OS components.
+: > "$TMP/xfer.jsonl"
+for pair in "Rclone:rclone" "MEGAcmd:mega-cmd" "MEGAcmd:megacmd" "FileZilla:filezilla" "WinSCP:winscp" \
+            "Croc:croc" "Magic-Wormhole:wormhole" "ffsend:ffsend" "NcFTP:ncftp"; do
+  name="${pair%%:*}"; bin="${pair##*:}"
+  if command -v "$bin" >/dev/null 2>&1; then
+    "$JQ" -cn --arg t "$name" --arg d "$(command -v "$bin")" '{tool:$t, evidence:"installed", detail:$d}' >> "$TMP/xfer.jsonl" 2>/dev/null
+  fi
+done
+"$JQ" -s '.' "$TMP/xfer.jsonl" > "$TMP/xfer.json" 2>/dev/null || echo "$emptyarr" > "$TMP/xfer.json"
+
+# BITS is Windows-only; RMM transfer-log scanning is left empty on *nix (best-effort only).
+echo "$emptyarr" > "$TMP/bits.json"
+echo "$emptyarr" > "$TMP/rmmlogs.json"
+
+# Browser history: SEAL ONLY. Copy History/places.sqlite into the case as hashed evidence;
+# never parsed on the endpoint. find (not glob) keeps space-bearing macOS paths safe.
+: > "$TMP/browser.jsonl"
+for base in /home /Users; do
+  [ -d "$base" ] || continue
+  for u in "$base"/*; do
+    [ -d "$u" ] || continue
+    uname_="$(basename "$u")"
+    find "$u/.config" "$u/.mozilla" "$u/Library/Application Support" -maxdepth 4 \
+         \( -name 'History' -o -name 'places.sqlite' \) -type f 2>/dev/null | head -n 20 | while IFS= read -r src; do
+      case "$src" in
+        *Brave*|*brave*)        br="Brave";;
+        *hromium*)              br="Chromium";;
+        *dge*)                  br="Edge";;
+        *hrome*|*Chrome*)       br="Chrome";;
+        *mozilla*|*Firefox*)    br="Firefox";;
+        *)                      br="Browser";;
+      esac
+      prof="$(basename "$(dirname "$src")")"; art="$(basename "$src")"
+      safe="$(printf 'browser_%s_%s_%s_%s' "$br" "$uname_" "$prof" "$art" | tr -c 'A-Za-z0-9_.-' '_')"
+      if cp -p "$src" "$CASEDIR/$safe" 2>/dev/null; then
+        sha="$(fos_sha256_file "$CASEDIR/$safe" 2>/dev/null)"
+        sz="$(wc -c <"$CASEDIR/$safe" 2>/dev/null | tr -d ' ')"
+        "$JQ" -cn --arg b "$br" --arg u "$uname_" --arg p "$prof" --arg a "$art" --arg src "$src" \
+          --arg sf "$safe" --arg sha "$sha" --argjson sz "${sz:-0}" \
+          '{browser:$b, user:$u, profile:$p, artifact:$a, sourcePath:$src, sealedFile:$sf, sha256:$sha, sizeBytes:$sz, modifiedUtc:""}' >> "$TMP/browser.jsonl" 2>/dev/null
+      fi
+    done
+  done
+done
+"$JQ" -s '.' "$TMP/browser.jsonl" > "$TMP/browser.json" 2>/dev/null || echo "$emptyarr" > "$TMP/browser.json"
+
 # --- Assemble bundle ---
 if [ "$PLATFORM" = "darwin" ]; then OSVER="$(sw_vers -productName 2>/dev/null) $(sw_vers -productVersion 2>/dev/null) ($(uname -m 2>/dev/null))"
 else OSVER="$(uname -srm 2>/dev/null)"; fi
@@ -417,6 +509,9 @@ else OSVER="$(uname -srm 2>/dev/null)"; fi
   --slurpfile logon "$TMP/logon.json" --slurpfile usercreate "$TMP/usercreate.json" \
   --slurpfile autostart "$TMP/autostart.json" --slurpfile files "$TMP/files.json" \
   --slurpfile remote "$TMP/remote.json" --slurpfile expected "$TMP/expected.json" \
+  --slurpfile dlprov "$TMP/dlprov.json" --slurpfile archives "$TMP/archives.json" \
+  --slurpfile bits "$TMP/bits.json" --slurpfile xfer "$TMP/xfer.json" \
+  --slurpfile rmmlogs "$TMP/rmmlogs.json" --slurpfile browser "$TMP/browser.json" \
   --slurpfile errors "$ERRJSON" \
   --argjson access "$ACCESS_JSON" --argjson defender "$DEFENDER_JSON" --argjson clamav "$CLAMAV_JSON" \
   --argjson macos "$MACOS_JSON" --argjson macctrl "$MACCTRL" \
@@ -437,7 +532,9 @@ else OSVER="$(uname -srm 2>/dev/null)"; fi
       network:{connections:$net[0], listeners:$listeners[0], dnsCache:[], hostsFileEntries:$hosts[0]},
       credentialAccess:{logonEvents:$logon[0], privilegeEscalationEvents:[],
                         userCreationEvents:$usercreate[0], serviceInstallEvents:[]},
-      fileSystem:{fileMetadata:$files[0], browserArtifacts:[]},
+      fileSystem:{fileMetadata:$files[0], browserArtifacts:$browser[0]},
+      exfiltration:{downloadProvenance:$dlprov[0], archiveStaging:$archives[0], bitsJobs:$bits[0],
+                    transferTools:$xfer[0], remoteToolTransferLogs:$rmmlogs[0]},
       powerShellActivity:{scriptBlockLogs:[]},
       antivirusScans:{defenderScan:{executed:false,threatsFound:0,threats:[]}, clamavScan:$clamav}
     }

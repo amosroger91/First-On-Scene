@@ -1,5 +1,42 @@
 # Changelog
 
+## Unreleased - Exfiltration / data-theft detection
+
+### Added (collectors: `scripts/win/Collect-Artifacts.ps1` + `scripts/nix/collect-artifacts.sh`)
+- **`artifacts.exfiltration`** section (read-only, zero egress):
+  - **`downloadProvenance`** - the source URL each downloaded file came from, read from the
+    Windows Mark-of-the-Web (`Zone.Identifier` ADS) / the Linux `user.xdg.origin.url` xattr. Pins a
+    dropped payload to the site that served it (e.g. a malicious MSI from a throwaway domain).
+  - **`archiveStaging`** - recently-written archives (`.zip/.rar/.7z/...`) in user/temp paths
+    (data compressed for collection before exfil).
+  - **`bitsJobs`** - Background Intelligent Transfer Service jobs with their remote URLs
+    (`-AllUsers`, with a current-user fallback when not elevated).
+  - **`transferTools`** - bulk data-egress utilities present (rclone, MEGAcmd, FileZilla, WinSCP,
+    croc, magic-wormhole, ffsend, rsync). Default OS components (curl/wget/7-Zip/OneDrive) are
+    intentionally excluded so the rule does not cry wolf.
+  - **`remoteToolTransferLogs`** - file-transfer log lines found in remote-access/RMM install dirs
+    (ScreenConnect/AnyDesk/TeamViewer/Splashtop): the likely channel for hands-on-keyboard theft.
+- **`fileSystem.browserArtifacts`** is now populated: browser **History** databases (Chrome/Edge/
+  Brave on Windows; Chrome/Chromium/Brave/Edge/Firefox on *nix) are **sealed verbatim** into the
+  case folder with a SHA-256 and covered by the manifest. They are **never parsed on the endpoint** -
+  structured browser analysis is deferred to off-box work on the forensic clone.
+- Per-profile resilience: a single access-denied user profile is logged to `metadata.errors` and
+  skipped, never blanking the rest of the scan (preserves the never-abort guarantee).
+
+### Added (rules, `rules/detections.json` -> ruleset `1.3.0`)
+- **FOS-EXF-001** Executable/installer downloaded from the internet (Mark-of-the-Web) (high).
+- **FOS-EXF-002** File downloaded from a suspicious/low-reputation source host or bare IP (high).
+- **FOS-COL-001** Archive recently staged in a user/temp directory (medium).
+- **FOS-EXF-003** BITS transfer job to/from an external URL (medium).
+- **FOS-EXF-004** Data-egress / file-transfer tool present (medium).
+- **FOS-EXF-005** File transfer through a remote-access tool session (high).
+- New categories **Exfiltration**, **Collection**, plus an **Initial Access** download-source rule;
+  all are `match`-type, so the Windows and *nix analyzers stay at parity with no new builtins.
+
+### Tests
+- New `tests/fixtures/exfil_bundle.json`; Pester + bats assert the bundle scores
+  `PROBLEM_DETECTED` / `Incident` (exit 20) and fires all six new rules.
+
 ## 3.5.0 - Windows collection depth + richer reports
 
 ### Added (Windows collector: `scripts/win/Collect-Artifacts.ps1` + standalone `deploy/standalone/Invoke-FosTriage.ps1`)

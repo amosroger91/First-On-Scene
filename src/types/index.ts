@@ -141,15 +141,74 @@ export interface FileMetadata {
   hash?: string;
 }
 
-export interface BrowserArtifacts {
-  historyFiles?: string[];
-  downloadFiles?: string[];
-  cookieFiles?: string[];
+/**
+ * A browser history database sealed as hashed evidence. The collector copies the DB
+ * verbatim into the case folder and records its hash; it NEVER parses it on the endpoint.
+ * Structured analysis happens off-box on the forensic clone.
+ */
+export interface SealedBrowserArtifact {
+  browser: string;
+  user?: string;
+  profile?: string;
+  artifact?: string;
+  sourcePath?: string;
+  sealedFile?: string;
+  sha256?: string;
+  sizeBytes?: number;
+  modifiedUtc?: string;
 }
 
 export interface FileSystemArtifacts {
   fileMetadata?: FileMetadata[];
-  browserArtifacts?: BrowserArtifacts;
+  browserArtifacts?: SealedBrowserArtifact[];
+}
+
+export interface DownloadProvenance {
+  fileName: string;
+  sourceUrl?: string;
+  referrerUrl?: string;
+  sourceHost?: string;
+  zoneId?: string;
+  sizeBytes?: number;
+  modifiedUtc?: string;
+}
+
+export interface ArchiveStaging {
+  fileName: string;
+  sizeBytes?: number;
+  createdUtc?: string;
+  modifiedUtc?: string;
+  ageMinutes?: number;
+}
+
+export interface BitsJob {
+  displayName?: string;
+  owner?: string;
+  state?: string;
+  transferType?: string;
+  remoteUrl?: string;
+  files?: unknown[];
+}
+
+export interface TransferTool {
+  tool: string;
+  evidence?: string;
+  detail?: string;
+}
+
+export interface RemoteToolTransferLog {
+  tool: string;
+  logPath?: string;
+  lineCount?: number;
+  matchedLines?: string[];
+}
+
+export interface ExfiltrationArtifacts {
+  downloadProvenance?: DownloadProvenance[];
+  archiveStaging?: ArchiveStaging[];
+  bitsJobs?: BitsJob[];
+  transferTools?: TransferTool[];
+  remoteToolTransferLogs?: RemoteToolTransferLog[];
 }
 
 export interface ScriptBlockLog {
@@ -185,6 +244,7 @@ export interface ForensicArtifacts {
   network?: NetworkArtifacts;
   credentialAccess?: CredentialAccessArtifacts;
   fileSystem?: FileSystemArtifacts;
+  exfiltration?: ExfiltrationArtifacts;
   powerShellActivity?: PowerShellActivity;
   antivirusScans?: AntivirusScans;
 }

@@ -57,6 +57,17 @@ run_triage() { # $1 = fixture
   rm -rf "$CD"
 }
 
+@test "exfil bundle -> PROBLEM_DETECTED / Incident / exit 20 with all exfil rules" {
+  run_triage exfil_bundle.json
+  [ "$EXIT" -eq 20 ]
+  [ "$VERDICT" = "PROBLEM_DETECTED" ]
+  [ "$CLASS" = "Incident" ]
+  for id in FOS-EXF-001 FOS-EXF-002 FOS-COL-001 FOS-EXF-003 FOS-EXF-004 FOS-EXF-005; do
+    "$JQ" -e --arg id "$id" '.findings|map(.ruleId)|index($id)' "$CD/findings.json" >/dev/null
+  done
+  rm -rf "$CD"
+}
+
 @test "chain of custody detects tampering" {
   CD="$(mktemp -d)"
   fos_coc_add "$CD" "A" "one" >/dev/null

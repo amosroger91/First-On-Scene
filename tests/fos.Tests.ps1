@@ -54,6 +54,22 @@ Describe 'Analyzer verdicts' {
         $ids | Should -Contain 'FOS-RAN-001'
         Remove-Item $r.CaseDir -Recurse -Force
     }
+    It 'flags data-theft signals as PROBLEM_DETECTED on an exfiltration bundle' {
+        $r = Invoke-FosTriageFixture 'exfil_bundle.json'
+        $r.Exit | Should -Be 20
+        $r.Findings.verdict | Should -Be 'PROBLEM_DETECTED'
+        $r.Findings.classification | Should -Be 'Incident'
+        $r.Findings.reasonCode | Should -Be 'SUSPICIOUS_DOWNLOAD_SOURCE'
+        Remove-Item $r.CaseDir -Recurse -Force
+    }
+    It 'fires every exfiltration/collection rule on the exfil bundle' {
+        $r = Invoke-FosTriageFixture 'exfil_bundle.json'
+        $ids = $r.Findings.findings.ruleId
+        foreach ($id in 'FOS-EXF-001','FOS-EXF-002','FOS-COL-001','FOS-EXF-003','FOS-EXF-004','FOS-EXF-005') {
+            $ids | Should -Contain $id
+        }
+        Remove-Item $r.CaseDir -Recurse -Force
+    }
 }
 
 Describe 'Evidence integrity' {

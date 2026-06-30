@@ -36,7 +36,8 @@ $p="$env:TEMP\Invoke-FosTriage.ps1"; iwr "https://raw.githubusercontent.com/amos
 By default it runs a fast pass that also checks **Defender health/tamper state**, **Windows Firewall
 posture**, **code signatures + SHA-256 of every running process**, **autostart hijacks** (IFEO /
 AppInit / Winlogon / sticky-keys backdoors), **network state** (listening ports, DNS cache, hosts-file
-redirects), and **log-clear events**. Add **`-Deep`** for Prefetch execution evidence, a
+redirects), **log-clear events**, and **data-theft signals** (download provenance, archive staging,
+BITS jobs, egress tools, RMM file-transfer logs). Add **`-Deep`** for Prefetch execution evidence, a
 possible-injection scan (unsigned modules loaded into running processes), and a kernel-driver
 signature scan — a minute or two more, still no dependencies. (Run as Administrator/SYSTEM for full coverage.)
 
@@ -163,6 +164,7 @@ A fast, **read-only, live** pass — designed to answer "is this box compromised
 - **Network** — connections to high-risk C2 ports and external RDP/SMB exposure, **listening TCP/UDP ports** with owning process (bind-shell detection), the local **DNS client cache**, and **hosts-file redirects** to non-loopback addresses.
 - **Credential access** — privileged + service-logon correlation, new local accounts.
 - **Defense evasion** — obfuscated/download-cradle PowerShell, timestomping, **Security/System log-clear** events.
+- **Exfiltration & data theft** — **download provenance** (the URL a dropped payload came from, via Mark-of-the-Web / origin xattr — flags suspicious/throwaway source hosts), **archive staging** in user/temp paths, **BITS transfer jobs**, bulk **data-egress tools** (rclone, MEGAcmd, FileZilla, WinSCP, croc…), and **file-transfer log lines** inside remote-access/RMM tool directories. Browser **History** databases are **sealed as hashed evidence** (never parsed on the box — that's for the clone).
 - **Malware** — on-box AV detections and ransom-note indicators.
 
 **`-Deep` pass** (a minute or two more, still zero dependencies): Prefetch execution evidence, a possible-injection scan (unsigned modules loaded into running processes), and a **kernel driver signature scan** (unsigned drivers loaded from non-standard paths).
