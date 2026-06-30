@@ -99,7 +99,7 @@ try {
 # --- Services ---
 $services = New-Object System.Collections.ArrayList
 try {
-    foreach ($s in (Get-CimInstance Win32_Service -ErrorAction Stop)) {
+    foreach ($s in (Get-CimInstance Win32_Service -Property Name,DisplayName,State,StartMode,PathName -ErrorAction Stop)) {
         [void]$services.Add([ordered]@{
             name=$s.Name; displayName=$s.DisplayName; state=$s.State; startMode=$s.StartMode; pathName=$s.PathName
         })
@@ -120,7 +120,7 @@ $processes = New-Object System.Collections.ArrayList
 try {
     # NOTE: GetOwner per-process is extremely slow on busy hosts and no rule consumes it,
     # so process ownership is intentionally not resolved here (keeps collection RMM-fast).
-    foreach ($p in (Get-CimInstance Win32_Process -ErrorAction Stop)) {
+    foreach ($p in (Get-CimInstance Win32_Process -Property ProcessId,Name,ExecutablePath,CommandLine,ParentProcessId -ErrorAction Stop)) {
         [void]$processes.Add([ordered]@{
             processId=[int]$p.ProcessId; name=$p.Name; executablePath=[string]$p.ExecutablePath
             commandLine=[string]$p.CommandLine; parentProcessId=[int]$p.ParentProcessId; user=''
@@ -390,7 +390,7 @@ $drivers = New-Object System.Collections.ArrayList
 if ($Deep) {
     try {
         $drvSig = @{}
-        foreach ($drv in (Get-CimInstance Win32_SystemDriver -ErrorAction SilentlyContinue | Where-Object { $_.State -eq 'Running' })) {
+        foreach ($drv in (Get-CimInstance Win32_SystemDriver -Property Name,DisplayName,PathName,State,StartMode -ErrorAction SilentlyContinue | Where-Object { $_.State -eq 'Running' })) {
             $dp = [string]$drv.PathName -replace '^\\\?\?\\', '' -replace '^\\SystemRoot\\', "$env:windir\"
             $sg = ''; $sn = ''
             if ($dp -match '^[A-Za-z]:\\' -and (Test-Path -LiteralPath $dp)) {
@@ -435,8 +435,15 @@ try {
             $f = $_
             if ($seenDl.ContainsKey($f.FullName)) { return }
             $seenDl[$f.FullName] = $true
+            # Cheap metadata gate: list streams once and only read content when MotW is actually present.
+            $hasZone = $false
+            try { $hasZone = @(Get-Item -LiteralPath $f.FullName -Stream * -ErrorAction SilentlyContinue | Where-Object { $_.Stream -eq 'Zone.Identifier' }).Count -gt 0 } catch { $hasZone = $false }
+            if (-not $hasZone) { return }
             $zi = $null
-            try { $zi = Get-Content -LiteralPath $f.FullName -Stream 'Zone.Identifier' -ErrorAction SilentlyContinue } catch {}
+            # The stream exists, so a read failure here is a real anomaly worth surfacing (not the
+            # common "no MotW" case) - log it rather than swallowing it.
+            try { $zi = Get-Content -LiteralPath $f.FullName -Stream 'Zone.Identifier' -ErrorAction Stop }
+            catch { Add-CollErr 'downloadProvenance' "Zone.Identifier read failed for $($f.FullName): $($_.Exception.Message)"; return }
             if ($zi) {
                 $text = ($zi -join "`n")
                 $hostUrl = ''; $refUrl = ''; $zoneId = ''
