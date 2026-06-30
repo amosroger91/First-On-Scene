@@ -544,7 +544,7 @@ try {
                     Select-Object -First 20 | ForEach-Object {
                         $lf = $_
                         try {
-                            $matched = @(Select-String -LiteralPath $lf.FullName -Pattern $xferRx -ErrorAction SilentlyContinue | Select-Object -First 10 | ForEach-Object { $_.Line.Trim() })
+                            $matched = @(Select-String -LiteralPath $lf.FullName -Pattern $xferRx -ErrorAction SilentlyContinue | Select-Object -First 100 | ForEach-Object { $_.Line.Trim() })
                             if ($matched.Count -gt 0) {
                                 [void]$remoteToolTransferLogs.Add([ordered]@{ tool=$toolDir.Name; logPath=$lf.FullName; lineCount=$matched.Count; matchedLines=$matched })
                             }

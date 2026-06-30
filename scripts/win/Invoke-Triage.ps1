@@ -163,6 +163,44 @@ function Invoke-FosBuiltin {
     }
 }
 
+function Format-FosEvidenceMd {
+    # Render a finding's evidence array as readable Markdown bullets so findings.md carries the
+    # actual artifacts (file names, URLs, timestamps, log lines) - not just the rule description.
+    param($Evidence, [int]$MaxItems = 15, [int]$MaxArray = 50)
+    $items = @($Evidence)
+    if ($items.Count -eq 0) { return '' }
+    $lines = New-Object System.Collections.Generic.List[string]
+    $lines.Add('- **Evidence (' + $items.Count + '):**')
+    $n = 0
+    foreach ($it in $items) {
+        if ($n -ge $MaxItems) { $lines.Add('  - _...' + ($items.Count - $n) + ' more item(s); full detail in findings.json / bundle.json_'); break }
+        $n++
+        if (($it -is [string]) -or ($it -is [ValueType])) { $lines.Add('  - ' + $it); continue }
+        $scalarParts = @(); $arrayProps = @()
+        foreach ($p in $it.PSObject.Properties) {
+            $v = $p.Value
+            if ($null -eq $v) { continue }
+            if (($v -is [System.Collections.IEnumerable]) -and ($v -isnot [string])) {
+                if (@($v).Count -gt 0) { $arrayProps += $p }
+            } elseif ("$v" -ne '') {
+                $scalarParts += ('{0}: {1}' -f $p.Name, $v)
+            }
+        }
+        if ($scalarParts.Count -gt 0) { $lines.Add('  - ' + ($scalarParts -join ' | ')) } else { $lines.Add('  - (item ' + $n + ')') }
+        foreach ($ap in $arrayProps) {
+            $lines.Add('    - ' + $ap.Name + ':')
+            $c = 0
+            foreach ($el in @($ap.Value)) {
+                if ($c -ge $MaxArray) { $lines.Add('      - _...truncated; see findings.json_'); break }
+                $c++
+                if (($el -is [string]) -or ($el -is [ValueType])) { $lines.Add('      - ' + $el) }
+                else { $lines.Add('      - ' + ((@($el.PSObject.Properties) | Where-Object { "$($_.Value)" -ne '' } | ForEach-Object { "$($_.Name)=$($_.Value)" }) -join ', ')) }
+            }
+        }
+    }
+    ($lines -join "`n")
+}
+
 # --- Load inputs ---
 Write-FosLog -Message "Loading bundle: $BundlePath" -Level STEP -CaseDir $CaseDir
 $bundle = Get-Content -LiteralPath $BundlePath -Raw | ConvertFrom-Json
@@ -271,7 +309,7 @@ $md = New-Object System.Text.StringBuilder
 [void]$md.AppendLine("| Severity | $($result.severity) |")
 [void]$md.AppendLine("| Score | $($result.score) (monitor=$($thr.monitor), problem=$($thr.problem), breach=$($thr.breach)) |")
 [void]$md.AppendLine("| Reason Code | $($result.reasonCode) |")
-[void]$md.AppendLine("| Ruleset | $($result.rulesetVersion) · Engine $($result.engineVersion) |")
+[void]$md.AppendLine("| Ruleset | $($result.rulesetVersion) - Engine $($result.engineVersion) |")
 [void]$md.AppendLine("")
 if (@($findings).Count -eq 0) {
     [void]$md.AppendLine("_No detections fired. System appears clean based on collected artifacts._")
@@ -284,6 +322,8 @@ if (@($findings).Count -eq 0) {
         if ($f.mitre) { [void]$md.AppendLine("- **MITRE ATT&CK:** $($f.mitre.tactic) / $($f.mitre.technique)") }
         [void]$md.AppendLine("- **Why it matters:** $($f.rationale)")
         [void]$md.AppendLine("- **False-positive guidance:** $($f.falsePositive)")
+        $evMd = Format-FosEvidenceMd -Evidence $f.evidence
+        if ($evMd) { [void]$md.AppendLine($evMd) }
         [void]$md.AppendLine("")
     }
 }

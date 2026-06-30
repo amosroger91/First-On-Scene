@@ -51,7 +51,7 @@ foreach ($d in ($f.findings | Sort-Object -Property @{Expression={$_.weight};Des
     $clr = $sevColor[$d.severity]
     $mitre = if ($d.mitre) { "$($d.mitre.tactic) / $($d.mitre.technique)" } else { '-' }
     $evJson = HtmlEnc (($d.evidence | ConvertTo-Json -Depth 6 -Compress))
-    if ($evJson.Length -gt 1200) { $evJson = $evJson.Substring(0,1200) + ' ...' }
+    if ($evJson.Length -gt 6000) { $evJson = $evJson.Substring(0,6000) + ' ... (truncated; see findings.json)' }
     $rows += @"
 <tr>
   <td><code>$(HtmlEnc $d.ruleId)</code></td>
