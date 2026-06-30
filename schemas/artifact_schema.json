@@ -469,9 +469,96 @@
             },
             "browserArtifacts": {
               "type": "array",
+              "description": "Browser history databases SEALED as hashed evidence (copied verbatim into the case). The collector NEVER parses them on the endpoint; structured analysis is done off-box on the forensic clone.",
               "items": {
                 "type": "object",
-                "properties": { "path": { "type": "string" } }
+                "properties": {
+                  "browser": { "type": "string", "description": "Chrome | Edge | Brave" },
+                  "user": { "type": "string" },
+                  "profile": { "type": "string", "description": "Default | Profile N" },
+                  "artifact": { "type": "string", "description": "e.g. History" },
+                  "sourcePath": { "type": "string" },
+                  "sealedFile": { "type": "string", "description": "Filename of the hashed copy inside the case folder (covered by manifest.json)." },
+                  "sha256": { "type": "string" },
+                  "sizeBytes": { "type": "integer" },
+                  "modifiedUtc": { "type": "string" }
+                }
+              }
+            }
+          }
+        },
+        "exfiltration": {
+          "type": "object",
+          "description": "Data-theft / data-movement signals (read-only). Ingress provenance, staging, and egress channels.",
+          "properties": {
+            "downloadProvenance": {
+              "type": "array",
+              "description": "Files carrying a Zone.Identifier (Mark-of-the-Web): the URL each was downloaded from.",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "fileName": { "type": "string" },
+                  "sourceUrl": { "type": "string", "description": "HostUrl from the Zone.Identifier ADS." },
+                  "referrerUrl": { "type": "string" },
+                  "sourceHost": { "type": "string", "description": "Hostname parsed from the source/referrer URL." },
+                  "zoneId": { "type": "string" },
+                  "sizeBytes": { "type": "integer" },
+                  "modifiedUtc": { "type": "string" }
+                }
+              }
+            },
+            "archiveStaging": {
+              "type": "array",
+              "description": "Recently-written archives in user-writable/temp paths (possible collection before exfil).",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "fileName": { "type": "string" },
+                  "sizeBytes": { "type": "integer" },
+                  "createdUtc": { "type": "string" },
+                  "modifiedUtc": { "type": "string" },
+                  "ageMinutes": { "type": "integer" }
+                }
+              }
+            },
+            "bitsJobs": {
+              "type": "array",
+              "description": "Background Intelligent Transfer Service jobs (a low-noise ingress/exfil channel).",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "displayName": { "type": "string" },
+                  "owner": { "type": "string" },
+                  "state": { "type": "string" },
+                  "transferType": { "type": "string" },
+                  "remoteUrl": { "type": "string" },
+                  "files": { "type": "array", "items": { "type": "object" } }
+                }
+              }
+            },
+            "transferTools": {
+              "type": "array",
+              "description": "Bulk data-egress utilities present (rclone, MEGAcmd, FileZilla, WinSCP, croc, etc.). Default Windows components are intentionally excluded.",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "tool": { "type": "string" },
+                  "evidence": { "type": "string", "description": "process | service | installed" },
+                  "detail": { "type": "string" }
+                }
+              }
+            },
+            "remoteToolTransferLogs": {
+              "type": "array",
+              "description": "File-transfer log lines found in remote-access/RMM tool install directories.",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "tool": { "type": "string" },
+                  "logPath": { "type": "string" },
+                  "lineCount": { "type": "integer" },
+                  "matchedLines": { "type": "array", "items": { "type": "string" } }
+                }
               }
             }
           }

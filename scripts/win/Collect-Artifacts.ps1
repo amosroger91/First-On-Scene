@@ -405,6 +405,193 @@ if ($Deep) {
     } catch { Add-CollErr 'drivers' $_.Exception.Message }
 }
 
+# --- Exfiltration / data-theft signals (read-only) -------------------------
+# Build the shared set of user-writable directories once (Downloads/Desktop/Documents/Temp
+# per profile, plus machine temp). These are the staging/landing zones for both ingress
+# (downloaded payloads) and collection (archives staged before exfil).
+$userDirs = New-Object System.Collections.ArrayList
+$usersRoot = Join-Path $env:SystemDrive 'Users'
+if (Test-Path -LiteralPath $usersRoot) {
+    foreach ($u in (Get-ChildItem -LiteralPath $usersRoot -Directory -ErrorAction SilentlyContinue)) {
+        # Per-user try/catch: a single protected/denied profile must never blank the whole scan.
+        try {
+            foreach ($sub in @('Downloads','Desktop','Documents','AppData\Local\Temp')) {
+                $d = Join-Path $u.FullName $sub
+                if (Test-Path -LiteralPath $d -ErrorAction SilentlyContinue) { [void]$userDirs.Add($d) }
+            }
+        } catch { Add-CollErr 'userDirs' "$($u.Name): $($_.Exception.Message)" }
+    }
+}
+foreach ($d in @($env:TEMP, "$env:windir\Temp")) { if ($d -and (Test-Path -LiteralPath $d -ErrorAction SilentlyContinue)) { [void]$userDirs.Add($d) } }
+$userDirs = @($userDirs | Select-Object -Unique)
+
+# Download provenance: the Mark-of-the-Web (Zone.Identifier alternate data stream) records
+# the URL each downloaded file came from. Pure NTFS read, no parsing libraries, no egress.
+$downloadProvenance = New-Object System.Collections.ArrayList
+try {
+    $seenDl = @{}
+    foreach ($dir in $userDirs) {
+        Get-ChildItem -LiteralPath $dir -File -ErrorAction SilentlyContinue | Select-Object -First 500 | ForEach-Object {
+            $f = $_
+            if ($seenDl.ContainsKey($f.FullName)) { return }
+            $seenDl[$f.FullName] = $true
+            $zi = $null
+            try { $zi = Get-Content -LiteralPath $f.FullName -Stream 'Zone.Identifier' -ErrorAction SilentlyContinue } catch {}
+            if ($zi) {
+                $text = ($zi -join "`n")
+                $hostUrl = ''; $refUrl = ''; $zoneId = ''
+                if ($text -match '(?im)^HostUrl=(.+)$')    { $hostUrl = $matches[1].Trim() }
+                if ($text -match '(?im)^ReferrerUrl=(.+)$') { $refUrl  = $matches[1].Trim() }
+                if ($text -match '(?im)^ZoneId=(\d+)')      { $zoneId  = $matches[1].Trim() }
+                $srcHost = ''
+                $eff = if ($hostUrl) { $hostUrl } else { $refUrl }
+                if ($eff -match '^[A-Za-z][A-Za-z0-9+.-]*://([^/:?#]+)') { $srcHost = $matches[1] }
+                [void]$downloadProvenance.Add([ordered]@{
+                    fileName=$f.FullName; sourceUrl=$hostUrl; referrerUrl=$refUrl; sourceHost=$srcHost
+                    zoneId=$zoneId; sizeBytes=[int64]$f.Length; modifiedUtc=$f.LastWriteTimeUtc.ToString('o')
+                })
+            }
+        }
+    }
+} catch { Add-CollErr 'downloadProvenance' $_.Exception.Message }
+
+# Archive staging: recently-written archives in user-writable paths are a classic
+# "collected for exfil" signal (data compressed before it leaves).
+$archiveStaging = New-Object System.Collections.ArrayList
+try {
+    $cutoff = [datetime]::UtcNow.AddDays(-14)
+    $arx = '\.(zip|rar|7z|tar|gz|tgz|cab|ace|arj|iso)$'
+    foreach ($dir in $userDirs) {
+        Get-ChildItem -LiteralPath $dir -File -ErrorAction SilentlyContinue |
+            Where-Object { $_.Name -match $arx -and $_.LastWriteTimeUtc -ge $cutoff } |
+            Select-Object -First 200 | ForEach-Object {
+                $ageMin = [int]([datetime]::UtcNow - $_.LastWriteTimeUtc).TotalMinutes
+                [void]$archiveStaging.Add([ordered]@{ fileName=$_.FullName; sizeBytes=[int64]$_.Length; createdUtc=$_.CreationTimeUtc.ToString('o'); modifiedUtc=$_.LastWriteTimeUtc.ToString('o'); ageMinutes=$ageMin })
+            }
+    }
+} catch { Add-CollErr 'archiveStaging' $_.Exception.Message }
+
+# BITS transfer jobs: a common, low-noise exfil/ingress channel that survives reboots.
+$bitsJobs = New-Object System.Collections.ArrayList
+try {
+    Import-Module BitsTransfer -ErrorAction SilentlyContinue
+    # -AllUsers needs elevation; fall back to the current user's jobs if it is denied.
+    $bitsList = @()
+    try { $bitsList = @(Get-BitsTransfer -AllUsers -ErrorAction Stop) }
+    catch { try { $bitsList = @(Get-BitsTransfer -ErrorAction SilentlyContinue) } catch { Add-CollErr 'bitsJobs' "AllUsers denied; current-user enumeration failed: $($_.Exception.Message)" } }
+    foreach ($j in $bitsList) {
+        $files = @($j.FileList | ForEach-Object { [ordered]@{ remote=[string]$_.RemoteName; local=[string]$_.LocalName; bytesTransferred=[int64]$_.BytesTransferred; bytesTotal=[int64]$_.BytesTotal } })
+        $remoteUrl = (@($files | ForEach-Object { $_.remote } | Where-Object { $_ }) -join ' ; ')
+        [void]$bitsJobs.Add([ordered]@{ displayName=[string]$j.DisplayName; owner=[string]$j.OwnerAccount; state=[string]$j.JobState; transferType=[string]$j.TransferType; remoteUrl=$remoteUrl; files=$files })
+    }
+} catch { Add-CollErr 'bitsJobs' $_.Exception.Message }
+
+# Transfer-tool inventory: data-egress utilities that are NOT default Windows components.
+# (curl/wget/7-Zip/OneDrive/Dropbox are intentionally excluded - too common to score on.)
+$TransferToolDefs = @(
+    @{ tool='Rclone'; rx='rclone' },
+    @{ tool='MEGAcmd / MEGAsync'; rx='megacmd|megasync' },
+    @{ tool='FileZilla'; rx='filezilla' },
+    @{ tool='WinSCP'; rx='winscp' },
+    @{ tool='PuTTY PSCP/PSFTP'; rx='pscp\.exe|psftp\.exe' },
+    @{ tool='NcFTP'; rx='ncftp' },
+    @{ tool='Croc'; rx='\bcroc\b' },
+    @{ tool='Magic-Wormhole'; rx='wormhole' },
+    @{ tool='Firefox Send / ffsend'; rx='ffsend' },
+    @{ tool='Rsync'; rx='\brsync\b' }
+)
+$transferTools = New-Object System.Collections.ArrayList
+try {
+    $tInstalled = @()
+    foreach ($p in @('HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\*',
+                     'HKLM:\SOFTWARE\Wow6432Node\Microsoft\Windows\CurrentVersion\Uninstall\*',
+                     'HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\*')) {
+        $tInstalled += Get-ItemProperty $p -ErrorAction SilentlyContinue | Where-Object { $_.DisplayName } | Select-Object -ExpandProperty DisplayName
+    }
+    $tProcNames = @($processes | ForEach-Object { $_.name })
+    $tSvcText   = @($services  | ForEach-Object { "$($_.name) $($_.displayName) $($_.pathName)" })
+    foreach ($def in $TransferToolDefs) {
+        $ev = @()
+        if ($tProcNames | Where-Object { $_ -match $def.rx }) { $ev += 'process' }
+        if ($tSvcText   | Where-Object { $_ -match $def.rx }) { $ev += 'service' }
+        $instMatch = @($tInstalled | Where-Object { $_ -match $def.rx })
+        if ($instMatch.Count -gt 0) { $ev += 'installed' }
+        if ($ev.Count -gt 0) {
+            [void]$transferTools.Add([ordered]@{ tool=$def.tool; evidence=($ev -join ','); detail=([string]($instMatch | Select-Object -First 1)) })
+        }
+    }
+} catch { Add-CollErr 'transferTools' $_.Exception.Message }
+
+# Remote-access tool file-transfer activity: scan known RMM install dirs for log lines that
+# indicate files moved through a remote session (the likely channel for hands-on-keyboard exfil).
+$remoteToolTransferLogs = New-Object System.Collections.ArrayList
+try {
+    $rmmRoots = @($env:ProgramData, ${env:ProgramFiles}, ${env:ProgramFiles(x86)}) | Where-Object { $_ -and (Test-Path -LiteralPath $_) } | Select-Object -Unique
+    $rmmRx  = 'ScreenConnect|ConnectWise.?Control|AnyDesk|TeamViewer|Splashtop'
+    $xferRx = '(?i)(file[ _-]?transfer|upload|download|sendfile|getfile|transferred|put file|received file)'
+    foreach ($root in $rmmRoots) {
+        Get-ChildItem -LiteralPath $root -Directory -ErrorAction SilentlyContinue |
+            Where-Object { $_.Name -match $rmmRx } | Select-Object -First 25 | ForEach-Object {
+                $toolDir = $_
+                Get-ChildItem -LiteralPath $toolDir.FullName -Recurse -Include '*.log','*.txt' -ErrorAction SilentlyContinue |
+                    Select-Object -First 20 | ForEach-Object {
+                        $lf = $_
+                        try {
+                            $matched = @(Select-String -LiteralPath $lf.FullName -Pattern $xferRx -ErrorAction SilentlyContinue | Select-Object -First 10 | ForEach-Object { $_.Line.Trim() })
+                            if ($matched.Count -gt 0) {
+                                [void]$remoteToolTransferLogs.Add([ordered]@{ tool=$toolDir.Name; logPath=$lf.FullName; lineCount=$matched.Count; matchedLines=$matched })
+                            }
+                        } catch {}
+                    }
+            }
+    }
+} catch { Add-CollErr 'remoteToolTransferLogs' $_.Exception.Message }
+
+# Browser history: SEAL ONLY. Copy the browser History databases into the sealed case as
+# hashed evidence (covered by the manifest). Structured parsing is intentionally deferred to
+# off-box analysis on the forensic clone with a real SQLite engine - we never parse on the
+# endpoint and never alter the source. Locked DBs are read with a shared handle.
+function Copy-FosSharedRead {
+    param([string]$Src, [string]$Dest)
+    $in = [System.IO.File]::Open($Src, [System.IO.FileMode]::Open, [System.IO.FileAccess]::Read, [System.IO.FileShare]::ReadWrite)
+    try { $out = [System.IO.File]::Create($Dest); try { $in.CopyTo($out) } finally { $out.Dispose() } }
+    finally { $in.Dispose() }
+}
+$browserArtifacts = New-Object System.Collections.ArrayList
+try {
+    $browserDefs = @(
+        @{ browser='Chrome'; rel='Google\Chrome\User Data' },
+        @{ browser='Edge';   rel='Microsoft\Edge\User Data' },
+        @{ browser='Brave';  rel='BraveSoftware\Brave-Browser\User Data' }
+    )
+    $usersRoot2 = Join-Path $env:SystemDrive 'Users'
+    if (Test-Path -LiteralPath $usersRoot2) {
+        foreach ($u in (Get-ChildItem -LiteralPath $usersRoot2 -Directory -ErrorAction SilentlyContinue)) {
+          try {
+            foreach ($b in $browserDefs) {
+                $udata = Join-Path $u.FullName ('AppData\Local\' + $b.rel)
+                if (-not (Test-Path -LiteralPath $udata)) { continue }
+                foreach ($prof in (Get-ChildItem -LiteralPath $udata -Directory -ErrorAction SilentlyContinue | Where-Object { $_.Name -eq 'Default' -or $_.Name -like 'Profile*' })) {
+                    $src = Join-Path $prof.FullName 'History'
+                    if (-not (Test-Path -LiteralPath $src -PathType Leaf)) { continue }
+                    $safe = (('browser_{0}_{1}_{2}_History.sqlite' -f $b.browser, $u.Name, $prof.Name) -replace '[^A-Za-z0-9_.-]', '_')
+                    $dest = Join-Path $CaseDir $safe
+                    try {
+                        Copy-FosSharedRead -Src $src -Dest $dest
+                        [void]$browserArtifacts.Add([ordered]@{
+                            browser=$b.browser; user=$u.Name; profile=$prof.Name; artifact='History'
+                            sourcePath=$src; sealedFile=$safe; sha256=(Get-FosFileSha256 $dest)
+                            sizeBytes=[int64](Get-Item -LiteralPath $dest).Length
+                            modifiedUtc=(Get-Item -LiteralPath $src).LastWriteTimeUtc.ToString('o')
+                        })
+                    } catch { Add-CollErr 'browserArtifacts' "seal failed for $src : $($_.Exception.Message)" }
+                }
+            }
+          } catch { Add-CollErr 'browserArtifacts' "$($u.Name): $($_.Exception.Message)" }
+        }
+    }
+} catch { Add-CollErr 'browserArtifacts' $_.Exception.Message }
+
 # --- Assemble bundle ---
 $op = Get-FosOperator
 $timeRange = $null
@@ -456,7 +643,14 @@ $bundle = [ordered]@{
             userCreationEvents = @($userCreate)
             serviceInstallEvents = @($svcInstall)
         }
-        fileSystem = [ordered]@{ fileMetadata = @($fileMeta); browserArtifacts = @() }
+        fileSystem = [ordered]@{ fileMetadata = @($fileMeta); browserArtifacts = @($browserArtifacts) }
+        exfiltration = [ordered]@{
+            downloadProvenance     = @($downloadProvenance)
+            archiveStaging         = @($archiveStaging)
+            bitsJobs               = @($bitsJobs)
+            transferTools          = @($transferTools)
+            remoteToolTransferLogs = @($remoteToolTransferLogs)
+        }
         powerShellActivity = [ordered]@{ scriptBlockLogs = @($psLogs) }
         antivirusScans = [ordered]@{
             defenderScan = $defender

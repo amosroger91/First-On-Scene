@@ -1,5 +1,5 @@
 {
-  "rulesetVersion": "1.2.0",
+  "rulesetVersion": "1.3.0",
   "description": "First-On-Scene deterministic detection ruleset. Each rule maps to a MITRE ATT&CK technique. The analyzer evaluates these generically against an artifact bundle. Authoring guide: docs/RULES.md.",
   "scoring": {
     "thresholds": { "monitor": 10, "problem": 30, "breach": 60 },
@@ -603,6 +603,110 @@
       ],
       "rationale": "System Integrity Protection or Gatekeeper being OFF removes a core macOS defense (kernel/file protection or unsigned-code blocking) and is a common attacker or pre-attack action to impair defenses. The collector only records a control here when it is disabled.",
       "falsePositive": "Developers sometimes disable Gatekeeper; SIP-disabled is rare on a managed endpoint. Confirm the change was intentional and policy-approved."
+    },
+    {
+      "id": "FOS-EXF-001",
+      "name": "Executable or installer downloaded from the internet (Mark-of-the-Web)",
+      "category": "Command and Control",
+      "mitre": { "tactic": "TA0011", "technique": "T1105" },
+      "type": "match",
+      "selector": "artifacts.exfiltration.downloadProvenance",
+      "match": "all",
+      "severity": "high",
+      "weight": 6,
+      "reasonCode": "DOWNLOADED_PAYLOAD",
+      "conditions": [
+        { "field": "fileName", "op": "regexI", "value": "\\.(exe|msi|ps1|bat|cmd|scr|js|jse|vbs|vbe|wsf|jar|hta|dll|lnk|iso|img)$" },
+        { "field": "sourceUrl", "op": "exists" }
+      ],
+      "rationale": "A program or installer carrying a Zone.Identifier (Mark-of-the-Web) was downloaded from an external URL into a user-writable location. This is the classic delivery vector for malicious remote-access tools and loaders (e.g. a ScreenConnect/MSI dropper pulled from an attacker site).",
+      "falsePositive": "Users legitimately download installers. Confirm the source URL, the publisher/signature of the file, and whether the download was expected."
+    },
+    {
+      "id": "FOS-EXF-002",
+      "name": "File downloaded from a suspicious or low-reputation source host",
+      "category": "Initial Access",
+      "mitre": { "tactic": "TA0001", "technique": "T1566.002" },
+      "type": "match",
+      "selector": "artifacts.exfiltration.downloadProvenance",
+      "match": "all",
+      "severity": "high",
+      "weight": 7,
+      "reasonCode": "SUSPICIOUS_DOWNLOAD_SOURCE",
+      "conditions": [
+        { "field": "sourceHost", "op": "regexI", "value": "(\\.(top|xyz|cyou|club|gq|tk|ml|ga|cf|zip|mov|click|link|rest|fit|monster|buzz|sbs|lol|live|shop|icu|work|host|kozow|duckdns)$)|(^\\d{1,3}(\\.\\d{1,3}){3}$)" }
+      ],
+      "rationale": "The download originated from a host on a high-abuse top-level domain or a bare IP address. Phishing lures and malware-delivery infrastructure overwhelmingly use these throwaway domains/IPs rather than reputable vendor sites.",
+      "falsePositive": "A small number of legitimate services use these TLDs. Treat as a strong lead, not proof: pivot on the full URL, the downloaded file, and the user's account of how they got the link."
+    },
+    {
+      "id": "FOS-COL-001",
+      "name": "Archive recently staged in a user or temp directory",
+      "category": "Collection",
+      "mitre": { "tactic": "TA0009", "technique": "T1560.001" },
+      "type": "match",
+      "selector": "artifacts.exfiltration.archiveStaging",
+      "match": "all",
+      "severity": "medium",
+      "weight": 3,
+      "reasonCode": "COLLECTION_STAGING",
+      "conditions": [
+        { "field": "fileName", "op": "regexI", "value": "\\.(zip|rar|7z|tar|gz|tgz|cab|ace|arj|iso)$" }
+      ],
+      "rationale": "An archive was written to a user-writable/temp path within the collection window. Attackers routinely compress collected files into an archive immediately before exfiltration to reduce volume and evade content inspection.",
+      "falsePositive": "Backups, software downloads, and user-created archives are common here. Correlate the archive's contents, size, and creation time with other indicators before treating it as staged data."
+    },
+    {
+      "id": "FOS-EXF-003",
+      "name": "BITS transfer job to or from an external URL",
+      "category": "Exfiltration",
+      "mitre": { "tactic": "TA0010", "technique": "T1048" },
+      "type": "match",
+      "selector": "artifacts.exfiltration.bitsJobs",
+      "match": "all",
+      "severity": "medium",
+      "weight": 4,
+      "reasonCode": "BITS_TRANSFER",
+      "conditions": [
+        { "field": "remoteUrl", "op": "regexI", "value": "^https?://" },
+        { "field": "remoteUrl", "op": "notRegexI", "value": "(localhost|127\\.0\\.0\\.1|://(10\\.|192\\.168\\.|172\\.(1[6-9]|2[0-9]|3[01])\\.)|\\.local)" }
+      ],
+      "rationale": "A Background Intelligent Transfer Service job is moving data to/from a public URL. BITS survives reboots and logoffs and is a favored low-noise channel for both pulling additional payloads and exfiltrating data.",
+      "falsePositive": "Windows Update, Microsoft Store, and some management agents use BITS. Verify the owner, the remote URL's reputation, and the local file path."
+    },
+    {
+      "id": "FOS-EXF-004",
+      "name": "Data-egress / file-transfer tool present",
+      "category": "Exfiltration",
+      "mitre": { "tactic": "TA0010", "technique": "T1567" },
+      "type": "match",
+      "selector": "artifacts.exfiltration.transferTools",
+      "match": "all",
+      "severity": "medium",
+      "weight": 3,
+      "reasonCode": "EXFIL_TOOL_PRESENT",
+      "conditions": [
+        { "field": "tool", "op": "exists" }
+      ],
+      "rationale": "A utility commonly used to move bulk data off a host (rclone, MEGAcmd, FileZilla, WinSCP, croc, magic-wormhole, etc.) is installed or running. These are not default Windows components; on a workstation hit by a remote-access intrusion their presence is a candidate exfiltration mechanism.",
+      "falsePositive": "Admins and developers legitimately use FileZilla/WinSCP/rsync. Confirm whether the tool is sanctioned for this user and whether it ran during the incident window."
+    },
+    {
+      "id": "FOS-EXF-005",
+      "name": "File transfer through a remote-access tool session",
+      "category": "Exfiltration",
+      "mitre": { "tactic": "TA0010", "technique": "T1041" },
+      "type": "match",
+      "selector": "artifacts.exfiltration.remoteToolTransferLogs",
+      "match": "all",
+      "severity": "high",
+      "weight": 6,
+      "reasonCode": "RMM_FILE_TRANSFER",
+      "conditions": [
+        { "field": "lineCount", "op": "gt", "value": 0 }
+      ],
+      "rationale": "A remote-access/RMM tool's own logs contain file-transfer entries, indicating files were moved through an interactive remote session. When the remote tool is unauthorized (see the undeclared-RMM rule), this is the most likely channel for hands-on-keyboard data theft and warrants reviewing exactly which files moved.",
+      "falsePositive": "Sanctioned RMM/support tools transfer files during legitimate support. Confirm the tool is authorized and correlate the transfer timestamps with a known support session."
     }
   ]
 }

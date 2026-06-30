@@ -1,0 +1,56 @@
+{
+  "schemaVersion": "3.0.0",
+  "metadata": {
+    "caseId": "FOS-20260629-VBFD-FH1-0623-ex0001",
+    "collectionTimestampUtc": "2026-06-30T18:00:00.000Z",
+    "targetHostname": "VBFD-FH1-0623",
+    "platform": "windows",
+    "osVersion": "Microsoft Windows 10 Pro",
+    "collectorVersion": "3.5.0",
+    "executionMode": "local",
+    "evidenceIntegrityMode": true,
+    "operator": { "user": "VBFD\\analyst", "host": "VBFD-FH1-0623", "tool": "First-On-Scene/3.5.0" }
+  },
+  "artifacts": {
+    "remoteAccess": { "tools": [] },
+    "securityPosture": {
+      "defender": { "available": true, "realTimeEnabled": true, "antivirusEnabled": true, "tamperProtectionEnabled": true, "exclusionPaths": [], "exclusionExtensions": [], "exclusionProcesses": [] },
+      "firewall": { "available": true, "profiles": [] }
+    },
+    "accessControl": { "localAdmins": [], "rdpEnabled": false, "shares": [] },
+    "defenseEvasion": { "logClearEvents": [] },
+    "persistence": { "registryRunKeys": [], "scheduledTasks": [], "services": [], "asep": [], "wmiEventSubscriptions": { "eventFilters": [], "eventConsumers": [], "filterBindings": [] } },
+    "execution": { "processes": [], "processCreationEvents": [], "prefetch": [], "injectedModules": [], "drivers": [] },
+    "network": { "connections": [], "listeners": [], "dnsCache": [], "hostsFileEntries": [] },
+    "credentialAccess": { "logonEvents": [], "privilegeEscalationEvents": [], "userCreationEvents": [], "serviceInstallEvents": [] },
+    "fileSystem": {
+      "fileMetadata": [],
+      "browserArtifacts": [
+        { "browser": "Chrome", "user": "565", "profile": "Default", "artifact": "History", "sourcePath": "C:\\Users\\565\\AppData\\Local\\Google\\Chrome\\User Data\\Default\\History", "sealedFile": "browser_Chrome_565_Default_History.sqlite", "sha256": "0000000000000000000000000000000000000000000000000000000000000000", "sizeBytes": 1234567, "modifiedUtc": "2026-06-29T22:20:00Z" }
+      ]
+    },
+    "exfiltration": {
+      "downloadProvenance": [
+        { "fileName": "C:\\Users\\565\\Downloads\\ScreenConnect.ClientSetup.msi", "sourceUrl": "https://app.buzaytaed.top/Bin/ScreenConnect.ClientSetup.msi", "referrerUrl": "", "sourceHost": "app.buzaytaed.top", "zoneId": "3", "sizeBytes": 1048576, "modifiedUtc": "2026-06-29T22:22:23Z" },
+        { "fileName": "C:\\Users\\565\\Downloads\\ScreenConnect.ClientSetup.exe", "sourceUrl": "https://app.buzaytaed.top/Bin/ScreenConnect.ClientSetup.exe", "referrerUrl": "", "sourceHost": "app.buzaytaed.top", "zoneId": "3", "sizeBytes": 2097152, "modifiedUtc": "2026-06-29T23:29:02Z" }
+      ],
+      "archiveStaging": [
+        { "fileName": "C:\\Users\\565\\Downloads\\fd_export.zip", "sizeBytes": 52428800, "createdUtc": "2026-06-29T23:10:00Z", "modifiedUtc": "2026-06-29T23:15:00Z", "ageMinutes": 600 }
+      ],
+      "bitsJobs": [
+        { "displayName": "update-task", "owner": "VBFD\\565", "state": "Transferring", "transferType": "Upload", "remoteUrl": "https://buzaytaed.top/upload/data.bin", "files": [] }
+      ],
+      "transferTools": [
+        { "tool": "Rclone", "evidence": "installed", "detail": "rclone 1.65" }
+      ],
+      "remoteToolTransferLogs": [
+        { "tool": "ScreenConnect Client (41de548d2a9d93a0)", "logPath": "C:\\ProgramData\\ScreenConnect Client (41de548d2a9d93a0)\\App_Log.txt", "lineCount": 2, "matchedLines": ["File transfer: outbound C:\\Users\\565\\Documents\\roster.xlsx", "Upload complete 1 file"] }
+      ]
+    },
+    "powerShellActivity": { "scriptBlockLogs": [] },
+    "antivirusScans": {
+      "defenderScan": { "executed": true, "threatsFound": 0, "threats": [] },
+      "clamavScan": { "executed": false, "threatsFound": 0, "threats": [] }
+    }
+  }
+}
